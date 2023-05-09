@@ -10,6 +10,7 @@
 #define MAX_MISO    12
 #define MAX_CLK     14
 #define MAX_CS      27
+#define MAX_RDY     26
 
 #define RTD_NOMINAL_RESISTANCE (100)
 #define RTD_REFERENCE_RESISTANCE (430)

@@ -36,7 +36,10 @@ void setup() {
     Serial.println("Initialize MAX31865");
 
     rtd.begin(MAX31865_3WIRE);
-    Serial.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
+    rtd.enableBias(true);
+    rtd.enable50Hz(true);
+    pinMode(MAX_RDY, INPUT);
+    //Serial.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
     //Serial.println("ERROR: No response from MAX");
 
     rtd.readRTD();
@@ -63,14 +66,22 @@ void setup() {
         }
     }
 
+    rtd.autoConvert(true);
+
     Serial.println("Done!");
 }
 
 void loop() {
 
     pressure.startSample();
+    //rtd.startSample();
 
     while (!pressure.isSampleReady())
+        continue;
+
+    // while (!rtd.isSampleReady())
+    //     continue;
+    while (digitalRead(MAX_RDY) != LOW)
         continue;
 
     auto p = pressure.readSample();
@@ -79,7 +90,9 @@ void loop() {
     // auto t = readTemperature();
 
     //auto t2 = rtd.readRTD();
-    float t2 = rtd.temperature(RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+    //float t2 = rtd.temperature(RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+    auto raw_rtd = rtd.readSample();
+    float t2 = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
 
 
     lcd.fillScreen(0);
