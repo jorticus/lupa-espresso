@@ -2,7 +2,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_GC9A01A.h>
 #include <Adafruit_MAX31865.h>
+#include <driver/timer.h>
+#include <driver/pcnt.h>
+#include <FreqCountESP.h>
 #include "pressure_transducer.h"
+#include "PulseCounter.h"
 #include "hardware.h"
 
 // 240x240px, 16-bit BGR pixel format
@@ -11,6 +15,22 @@ Adafruit_MAX31865   rtd(MAX_CS, MAX_MOSI, MAX_MISO, MAX_CLK);
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
 int counter = 0;
+
+
+// volatile int16_t pulseCount = 0;
+// volatile bool pulseValueReady = false;
+
+
+
+
+// bool initPulseCounter() {
+// }
+
+// int getPulseCount() {
+//     int16_t count = 0;
+//     ESP_ERROR_CHECK(pcnt_get_counter_value(PCNT_UNIT_0, &count));
+//     return count;
+// }
 
 void setup() {
     Serial.begin(9600);
@@ -68,8 +88,20 @@ void setup() {
 
     rtd.autoConvert(true);
 
+    Serial.println("Initialize Pulse Counter");
+
+    pinMode(FLOW_PULSE_PIN, INPUT_PULLUP);
+    PulseCounter1.begin(FLOW_PULSE_PIN);
+   
+
     Serial.println("Done!");
 }
+
+struct {
+    float t;
+    int p;
+    float f;
+} values;
 
 void loop() {
 
@@ -81,18 +113,32 @@ void loop() {
 
     // while (!rtd.isSampleReady())
     //     continue;
-    while (digitalRead(MAX_RDY) != LOW)
-        continue;
+    // while (digitalRead(MAX_RDY) != LOW)
+    //     continue;
+
+    if (digitalRead(MAX_RDY) == LOW) {
+        auto raw_rtd = rtd.readSample();
+        values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+    }
+
+    //while (!FreqCountESP.available())
+    // while (!PulseCounter1.isSampleReady())
+    //     continue;
+    // auto f = PulseCounter1.getFrequency();
+
+    if (PulseCounter1.isSampleReady()) {
+        values.f = PulseCounter1.getFrequency();
+    }
 
     auto p = pressure.readSample();
-    
+
+
     // auto p = readPressure();
     // auto t = readTemperature();
 
     //auto t2 = rtd.readRTD();
     //float t2 = rtd.temperature(RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
-    auto raw_rtd = rtd.readSample();
-    float t2 = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+
 
 
     lcd.fillScreen(0);
@@ -104,9 +150,12 @@ void loop() {
         lcd.printf("P: -");
     }
 
+    lcd.setCursor(30, 110);
+    lcd.printf("F: %.2f", values.f);
+
     lcd.setCursor(30, 140);
-    if (t2 > RTD_MIN_TEMP && t2 < RTD_MAX_TEMP) {
-        lcd.printf("T: %.2fC", t2);
+    if (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP) {
+        lcd.printf("T: %.2fC", values.t);
     } else {
         lcd.printf("T: -");
     }

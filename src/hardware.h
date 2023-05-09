@@ -12,6 +12,11 @@
 #define MAX_CS      27
 #define MAX_RDY     26
 
+// https://www.eptsensor.com/flow-sensor/hall-flow-sensor/fm-hl3012-flow-meter-hall-sensor.html
+// 5V-24V
+// Flow rate 0.75-1L/min
+#define FLOW_PULSE_PIN 25
+
 #define RTD_NOMINAL_RESISTANCE (100)
 #define RTD_REFERENCE_RESISTANCE (430)
 #define RTD_MIN_TEMP (-200)
