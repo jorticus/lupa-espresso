@@ -1,8 +1,5 @@
 #pragma once
 
-#define LCD_DC      15
-#define LCD_CS      22
-
 #define I2C_SCL     19
 #define I2C_SDA     21
 

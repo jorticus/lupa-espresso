@@ -1,58 +1,59 @@
 #include <Arduino.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_GC9A01A.h>
+//#include <Adafruit_GFX.h>
+//#include <Adafruit_GC9A01A.h>
+//#include <Arduino_GFX.h>
+#include <Wire.h>
+#include <Adafruit_SPIDevice.h>
 #include <Adafruit_MAX31865.h>
-#include <driver/timer.h>
-#include <driver/pcnt.h>
-#include <FreqCountESP.h>
 #include "pressure_transducer.h"
 #include "PulseCounter.h"
+#include <TFT_eSPI.h>
 #include "hardware.h"
 
-// 240x240px, 16-bit BGR pixel format
-Adafruit_GC9A01A    lcd(LCD_CS, LCD_DC);
+TFT_eSPI    tft;
+TFT_eSprite gfx { &tft };
+
 Adafruit_MAX31865   rtd(MAX_CS, MAX_MOSI, MAX_MISO, MAX_CLK);
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
+bool isRtdAvailable = false;
+bool isPressureAvailable = false;
+bool isFlowAvailable = false;
+
 int counter = 0;
 
-
-// volatile int16_t pulseCount = 0;
-// volatile bool pulseValueReady = false;
-
-
-
-
-// bool initPulseCounter() {
-// }
-
-// int getPulseCount() {
-//     int16_t count = 0;
-//     ESP_ERROR_CHECK(pcnt_get_counter_value(PCNT_UNIT_0, &count));
-//     return count;
-// }
-
-void setup() {
-    Serial.begin(9600);
-    pinMode(I2C_SDA, INPUT_PULLUP);
-    pinMode(I2C_SCL, INPUT_PULLUP);
-    Wire.setPins(I2C_SDA, I2C_SCL);
-    //Wire.setClock();
-    Wire.begin();
-    
+void initDisplay() {
     Serial.println("Initialize LCD...");
-    lcd.begin();
-    lcd.fillScreen(0);
-    lcd.setCursor(120, 120);
-    lcd.setTextSize(2);
-    //lcd.setTextColor();
-    lcd.print("Init");
 
+    tft.begin();
+    tft.fillScreen(TFT_BLACK);
+
+    // lcd.begin();
+    // lcd.fillScreen(0);
+    tft.setCursor(120, 120);
+    tft.setTextSize(2);
+    //lcd.setTextColor();
+    tft.print("Init");
+
+    // Allocate a buffer for the display
+    gfx.setColorDepth(8);
+    if (gfx.createSprite(TFT_WIDTH, TFT_HEIGHT) == nullptr) {
+        Serial.println("ERROR: display buffer allocation failed!");
+        tft.fillScreen(TFT_RED);
+    }
+}
+
+void initPressure() {
     Serial.println("Initialize Pressure");
     if (!pressure.begin()) {
         Serial.println("ERROR: No response from pressure transducer");
     }
+    else {
+        isPressureAvailable = true;
+    }
+}
 
+void initTemperature() {
     Serial.println("Initialize MAX31865");
 
     rtd.begin(MAX31865_3WIRE);
@@ -85,40 +86,73 @@ void setup() {
         Serial.println("Under/Over voltage"); 
         }
     }
+    else {
+        isRtdAvailable = true;
+        rtd.autoConvert(true);
+    }
+}
 
-    rtd.autoConvert(true);
-
+void initFlow() {
     Serial.println("Initialize Pulse Counter");
 
     pinMode(FLOW_PULSE_PIN, INPUT_PULLUP);
     PulseCounter1.begin(FLOW_PULSE_PIN);
-   
+    isFlowAvailable = true;
+
+    gfx.fillSprite(TFT_BLACK);
+    gfx.pushSprite(0,0);
+    gfx.setTextSize(2);
+}
+
+void setup() {
+    Serial.begin(9600);
+    
+    pinMode(I2C_SDA, INPUT_PULLUP);
+    pinMode(I2C_SCL, INPUT_PULLUP);
+    Wire.setPins(I2C_SDA, I2C_SCL);
+    Wire.begin();
+    
+
+    initDisplay();
+    initPressure();
+    initTemperature();
+    initFlow();
 
     Serial.println("Done!");
 }
 
 struct {
     float t;
+    bool t_valid;
+
     int p;
+    bool p_valid;
+
     float f;
-} values;
+    bool f_valid;
+} values = {0};
 
 void loop() {
 
-    pressure.startSample();
-    //rtd.startSample();
+    if (isPressureAvailable)
+    {
+        pressure.startSample();
 
-    while (!pressure.isSampleReady())
-        continue;
+        while (!pressure.isSampleReady())
+            continue;
+    }
 
     // while (!rtd.isSampleReady())
     //     continue;
     // while (digitalRead(MAX_RDY) != LOW)
     //     continue;
 
-    if (digitalRead(MAX_RDY) == LOW) {
-        auto raw_rtd = rtd.readSample();
-        values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+    if (isRtdAvailable) {
+        if (digitalRead(MAX_RDY) == LOW) {
+            auto raw_rtd = rtd.readSample();
+            values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+            values.t_valid = (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP);
+        }
     }
 
     //while (!FreqCountESP.available())
@@ -126,11 +160,17 @@ void loop() {
     //     continue;
     // auto f = PulseCounter1.getFrequency();
 
-    if (PulseCounter1.isSampleReady()) {
+    if (isFlowAvailable && PulseCounter1.isSampleReady()) {
+        // Value typically ranges from 40-270 Hz
         values.f = PulseCounter1.getFrequency();
+        values.f_valid = true;
     }
 
-    auto p = pressure.readSample();
+    if (isPressureAvailable) {
+        auto r = pressure.readSample();
+        values.p_valid = r.is_valid;
+        values.p = r.pressure;
+    }
 
 
     // auto p = readPressure();
@@ -140,25 +180,25 @@ void loop() {
     //float t2 = rtd.temperature(RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
 
 
-
-    lcd.fillScreen(0);
-    lcd.setCursor(30, 80);
+    gfx.fillSprite(TFT_BLACK);
+    gfx.setCursor(30, 80);
     //lcd.printf("P: %.2f", p * 0.001f);
-    if (p.is_valid) {
-        lcd.printf("P: %.2f", p.pressure * 0.001f);
+    if (values.p_valid) {
+        gfx.printf("P: %.2f", values.p * 0.001f);
     } else {
-        lcd.printf("P: -");
+        gfx.printf("P: -");
     }
 
-    lcd.setCursor(30, 110);
-    lcd.printf("F: %.2f", values.f);
+    gfx.setCursor(30, 110);
+    gfx.printf("F: %.2f", values.f);
 
-    lcd.setCursor(30, 140);
-    if (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP) {
-        lcd.printf("T: %.2fC", values.t);
+    gfx.setCursor(30, 140);
+    if (values.t_valid) {
+        gfx.printf("T: %.2fC", values.t);
     } else {
-        lcd.printf("T: -");
+        gfx.printf("T: -");
     }
 
+    gfx.pushSprite(0,0);
     delay(10);
 }
