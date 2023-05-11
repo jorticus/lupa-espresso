@@ -8,7 +8,7 @@
 #define TFT_SCLK 18 // "SCL"
 #define TFT_CS   22
 #define TFT_DC   15
-#define TFT_RST  -1
+#define TFT_RST  33
 
 //#define TFT_SDA_READ
 
