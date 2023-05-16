@@ -7,18 +7,22 @@
 // Lever actuator input switch
 // High = Lever open
 // Low  = Lever closed or partially open
-#define PIN_IN_LEVER 32
+#define PIN_IN_LEVER 36
 
 // Water tank low switch
 // High = Water tank is low
-#define PIN_IN_WATER_LOW 35
+#define PIN_IN_WATER_LOW 34
 
 // Water flow pulse sensor input pin
 // 5V-24V
 // Flow rate 0.75-1L/min
 // https://www.eptsensor.com/flow-sensor/hall-flow-sensor/fm-hl3012-flow-meter-hall-sensor.html
-#define FLOW_PULSE_PIN 25
+#define FLOW_PULSE_PIN 39
 
+// Boiler tank full sense
+// Used for auto-fill logic
+// High = Boiler is full
+#define PIN_IN_WATER_FULL -1
 
 //
 // Output GPIOs
@@ -39,8 +43,8 @@
 //
 // [0x7F] : Pressure Transducer
 //
-#define I2C_SCL     19
-#define I2C_SDA     21
+#define I2C_SCL     15 //19
+#define I2C_SDA     2  //21
 
 // Pressure Transducer
 // White: SDA
@@ -62,11 +66,8 @@
 // - MAX31865 RTD
 //
 
-#define MAX_MOSI    13
-#define MAX_MISO    12
-#define MAX_CLK     14
-#define MAX_CS      27
-#define MAX_RDY     26
+#define MAX_CS      25
+#define MAX_RDY     35
 
 #define RTD_NOMINAL_RESISTANCE (100)
 #define RTD_REFERENCE_RESISTANCE (430)

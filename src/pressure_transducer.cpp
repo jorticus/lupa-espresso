@@ -29,13 +29,13 @@ bool PressureTransducer::startSample() {
     Wire.beginTransmission(i2c_addr);
     Wire.write(REGISTER_SAMPLE_CONTROL);
     Wire.write(START_SAMPLE);
-    return (Wire.endTransmission() == I2C_ERROR_OK);
+    return (Wire.endTransmission() == 0);
 }
 
 bool PressureTransducer::isSampleReady() {
     Wire.beginTransmission(i2c_addr);
     Wire.write(REGISTER_SAMPLE_CONTROL);
-    if (Wire.endTransmission() != I2C_ERROR_OK)
+    if (Wire.endTransmission() != 0)
         return false;
 
     Wire.requestFrom(i2c_addr, (uint8_t)1);
@@ -73,7 +73,7 @@ pressure_sample_t PressureTransducer::readSample() {
 bool PressureTransducer::readRegister(uint8_t reg, uint8_t* buf, size_t len) {
     Wire.beginTransmission(i2c_addr);
     Wire.write(reg);
-    if (Wire.endTransmission() != I2C_ERROR_OK) {
+    if (Wire.endTransmission() != 0) {
         Serial.println("NACK from pressure");
         return false;
     }

@@ -24,7 +24,7 @@ TFT_eSprite gfx_right { &tft };
 
 constexpr float deg2rad      = 3.14159265359/180.0;
 
-Adafruit_MAX31865   rtd(MAX_CS, MAX_MOSI, MAX_MISO, MAX_CLK);
+Adafruit_MAX31865   rtd(MAX_CS, &tft.getSPIinstance());
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
 enum class UiState {
@@ -83,6 +83,18 @@ void initGpio() {
     // BOOT button used for debugging
     pinMode(0, INPUT);
 
+    // The following devices share the same SPI bus. 
+    // Ensure all CS pins are de-asserted.
+    pinMode(TFT_CS_LEFT, OUTPUT);
+    pinMode(TFT_CS_RIGHT, OUTPUT);
+    pinMode(MAX_CS, OUTPUT);
+    digitalWrite(MAX_CS, HIGH);
+    digitalWrite(TFT_CS_LEFT, HIGH);
+    digitalWrite(TFT_CS_RIGHT, HIGH);
+
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, LOW);
+
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
     pinMode(PIN_IN_WATER_LOW, INPUT_PULLDOWN);
     pinMode(PIN_OUT_HEAT, OUTPUT);
@@ -120,8 +132,15 @@ bool isWaterTankLow() {
 void initDisplay() {
     Serial.println("Initialize LCD...");
 
+    digitalWrite(TFT_CS_LEFT, LOW);
     tft.begin();
     tft.fillScreen(TFT_BLACK);
+    digitalWrite(TFT_CS_LEFT, HIGH);
+
+    digitalWrite(TFT_CS_RIGHT, LOW);
+    tft.begin();
+    tft.fillScreen(TFT_BLACK);
+    digitalWrite(TFT_CS_RIGHT, HIGH);
 
     // Allocate a buffer for the display
     gfx_left.setColorDepth(8);
@@ -130,13 +149,26 @@ void initDisplay() {
         gfx_right.createSprite(TFT_WIDTH, TFT_HEIGHT) == nullptr)
     {
         Serial.println("ERROR: display buffer allocation failed!");
-        tft.fillScreen(TFT_RED);
+        return;
     }
 
-    // gfx_left.fillSprite(TFT_BLACK);
-    // gfx_left.pushSprite(0,0);
     gfx_left.setTextSize(2);
     gfx_right.setTextSize(2);
+}
+
+void tftUpdateDisplay() {
+    digitalWrite(MAX_CS, HIGH);
+
+    digitalWrite(TFT_CS_RIGHT, LOW);
+    gfx_right.pushSprite(0,0);
+    digitalWrite(TFT_CS_RIGHT, HIGH);
+
+    digitalWrite(TFT_CS_LEFT, LOW);
+    gfx_left.pushSprite(0,0);
+    digitalWrite(TFT_CS_LEFT, HIGH);
+
+    // Enable backlight
+    digitalWrite(TFT_BL, HIGH);
 }
 
 void initPressure() {
@@ -152,10 +184,12 @@ void initPressure() {
 void initTemperature() {
     Serial.println("Initialize MAX31865");
 
+    pinMode(MAX_RDY, INPUT);
+
     rtd.begin(MAX31865_3WIRE);
     rtd.enableBias(true);
     rtd.enable50Hz(true);
-    pinMode(MAX_RDY, INPUT);
+    
     //Serial.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
     //Serial.println("ERROR: No response from MAX");
 
@@ -164,22 +198,22 @@ void initTemperature() {
     if (fault) {
         Serial.print("Fault 0x"); Serial.println(fault, HEX);
         if (fault & MAX31865_FAULT_HIGHTHRESH) {
-        Serial.println("RTD High Threshold"); 
+            Serial.println("RTD High Threshold"); 
         }
         if (fault & MAX31865_FAULT_LOWTHRESH) {
-        Serial.println("RTD Low Threshold"); 
+            Serial.println("RTD Low Threshold"); 
         }
         if (fault & MAX31865_FAULT_REFINLOW) {
-        Serial.println("REFIN- > 0.85 x Bias"); 
+            Serial.println("REFIN- > 0.85 x Bias"); 
         }
         if (fault & MAX31865_FAULT_REFINHIGH) {
-        Serial.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
+            Serial.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
         }
         if (fault & MAX31865_FAULT_RTDINLOW) {
-        Serial.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
+            Serial.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
         }
         if (fault & MAX31865_FAULT_OVUV) {
-        Serial.println("Under/Over voltage"); 
+            Serial.println("Under/Over voltage"); 
         }
     }
     else {
@@ -210,12 +244,12 @@ void setup() {
     initTemperature();
     initFlow();
 
-    //uiState = UiState::Preheat;
-    uiState = UiState::SensorTest;
+    uiState = UiState::Preheat;
+    //uiState = UiState::SensorTest;
 
     // If sensors could not be initialized, indicate fault
     if (uiState != UiState::SensorTest && 
-        (!isRtdAvailable || !isFlowAvailable || !isPressureAvailable))
+        (!isRtdAvailable || !isFlowAvailable))// || !isPressureAvailable))
     {
         uiFault = FaultState::SensorFailure;
         uiState = UiState::Fault;
@@ -226,7 +260,7 @@ void setup() {
     Serial.println("Done!");
 }
 
-void uiDrawStatusCircle() {
+void uiDrawStatusCircle(TFT_eSprite& gfx) {
     uint32_t ring_w = 10;
     unsigned long t = millis();
 
@@ -291,20 +325,20 @@ void uiDrawStatusCircle() {
             return;
     }
 
-    gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
+    gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
 
     if (status_str != nullptr) {
-        int16_t tw = gfx_right.textWidth(status_str);
+        int16_t tw = gfx.textWidth(status_str);
         int16_t th = 14;
-        gfx_right.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
-        gfx_right.print(status_str);
+        gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
+        gfx.print(status_str);
     }
 }
 
 void uiRenderMargin() {
-    uint32_t margin = 5;
-    uint32_t ring_w = 10 + margin;
-    gfx_right.drawArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, TFT_BLACK, TFT_BLACK, false);
+    // uint32_t margin = 5;
+    // uint32_t ring_w = 10 + margin;
+    // gfx_right.drawArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, TFT_BLACK, TFT_BLACK, false);
 }
 
 void uiRenderGauge() {
@@ -427,9 +461,9 @@ void uiRenderPreheat() {
     // Render current temperature
     char buffer[20];
     if (values.t_valid) {
-        snprintf(buffer, sizeof(buffer), "%.2fC", values.t);
+        snprintf(buffer, sizeof(buffer), "%.2f C", values.t);
     } else {
-        snprintf(buffer, sizeof(buffer), "-");
+        snprintf(buffer, sizeof(buffer), "- C");
     }
     buffer[sizeof(buffer)-1] = '\0';
 
@@ -594,8 +628,9 @@ void readSensors() {
     // while (digitalRead(MAX_RDY) != LOW)
     //     continue;
 
-    if (isRtdAvailable && isMaxSampleReady()) {
+    if (isRtdAvailable && rtd.isSampleReady()) {// isMaxSampleReady()) {
         auto raw_rtd = rtd.readSample();
+        Serial.printf("T: %d\n", raw_rtd);
         values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
         values.t_valid = (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP);
     }
@@ -693,6 +728,7 @@ void processState() {
 
     // NOTE: Process faults first.
 
+/*
     if (uiState != UiState::SensorTest && 
         (!values.f_valid || !values.p_valid || !values.t_valid))
     {
@@ -700,6 +736,7 @@ void processState() {
         uiState = UiState::Fault;
         return;
     }
+*/
 
     // If water tank is low at any point, indicate fault
     if (isWaterTankLow()) {
@@ -761,7 +798,8 @@ void render() {
 
         //uiRenderGraph();
 
-        uiDrawStatusCircle();
+        uiDrawStatusCircle(gfx_right);
+        uiDrawStatusCircle(gfx_left);
 
         switch (uiState) {
             case UiState::Preheat:
@@ -805,12 +843,11 @@ void render() {
         }
 #endif
 
-        gfx_right.pushSprite(0,0);
+        tftUpdateDisplay();
     }
 }
 
 void loop() {
-
 
     readSensors();
 

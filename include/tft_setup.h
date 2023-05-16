@@ -4,11 +4,23 @@
 
 #define GC9A01_DRIVER
 
-#define TFT_MOSI 23 // "SDA"
-#define TFT_SCLK 18 // "SCL"
-#define TFT_CS   22
-#define TFT_DC   15
-#define TFT_RST  33
+// #define TFT_MOSI 23 // "SDA"
+// #define TFT_SCLK 18 // "SCL"
+// #define TFT_CS   22
+// #define TFT_DC   15
+// #define TFT_RST  33
+
+#define TFT_MOSI 13 // "SDA"
+#define TFT_SCLK 14 // "SCL"
+//#define TFT_CS   33
+//#define TFT_CS   (tft_cs_pin)
+#define TFT_CS  -1
+#define TFT_DC  27
+#define TFT_RST -1
+#define TFT_BL  26
+
+#define TFT_CS_LEFT 33
+#define TFT_CS_RIGHT 32
 
 //#define TFT_SDA_READ
 
@@ -26,3 +38,5 @@
 
 #define TFT_WIDTH 240
 #define TFT_HEIGHT 240
+
+//extern int tft_cs_pin;
