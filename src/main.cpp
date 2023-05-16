@@ -219,6 +219,20 @@ void initTemperature() {
     else {
         isRtdAvailable = true;
         rtd.autoConvert(true);
+
+        // Wait for a sample to come in
+        auto t1 = millis();
+        while (((millis() - t1) < 1000) && (!rtd.isSampleReady()))
+            continue;
+        
+        if (!rtd.isSampleReady()) {
+            Serial.println("Error: No sample");
+        }
+        else if (rtd.readSample() == 0) {
+            Serial.println("Error: Sample is zero");
+        }
+
+        isRtdAvailable = true;
     }
 }
 
@@ -244,8 +258,8 @@ void setup() {
     initTemperature();
     initFlow();
 
-    uiState = UiState::Preheat;
-    //uiState = UiState::SensorTest;
+    //uiState = UiState::Preheat;
+    uiState = UiState::SensorTest;
 
     // If sensors could not be initialized, indicate fault
     if (uiState != UiState::SensorTest && 
@@ -630,7 +644,7 @@ void readSensors() {
 
     if (isRtdAvailable && rtd.isSampleReady()) {// isMaxSampleReady()) {
         auto raw_rtd = rtd.readSample();
-        Serial.printf("T: %d\n", raw_rtd);
+        //Serial.printf("T: %d\n", raw_rtd);
         values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
         values.t_valid = (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP);
     }
@@ -701,6 +715,9 @@ void printState(UiState uiState) {
         case UiState::Init:
             Serial.println("Init");
             break;
+        case UiState::Ready:
+            Serial.println("Ready");
+            break;
         case UiState::Preheat:
             Serial.println("Pre-Heat");
             break;
@@ -712,6 +729,9 @@ void printState(UiState uiState) {
             break;
         case UiState::Fault:
             Serial.println("Fault");
+            break;
+        case UiState::SensorTest:
+            Serial.println("Sensor Test");
             break;
         default:
             Serial.println((int)uiState);

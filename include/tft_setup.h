@@ -11,6 +11,7 @@
 // #define TFT_RST  33
 
 #define TFT_MOSI 13 // "SDA"
+#define TFT_MISO 12 // Not used by TFT, but needed by MAX ADC
 #define TFT_SCLK 14 // "SCL"
 //#define TFT_CS   33
 //#define TFT_CS   (tft_cs_pin)
