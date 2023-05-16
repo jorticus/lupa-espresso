@@ -43,8 +43,8 @@
 //
 // [0x7F] : Pressure Transducer
 //
-#define I2C_SCL     15 //19
-#define I2C_SDA     2  //21
+#define I2C_SCL     18
+#define I2C_SDA     19
 
 // Pressure Transducer
 // White: SDA
