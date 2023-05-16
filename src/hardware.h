@@ -7,14 +7,15 @@
 // Lever actuator input switch
 // High = Lever open
 // Low  = Lever closed or partially open
-#define PIN_IN_LEVER 36
+#define PIN_IN_LEVER 23
 
 // Water tank low switch
 // High = Water tank is low
-#define PIN_IN_WATER_LOW 34
+#define PIN_IN_WATER_LOW 22
 
 // Water flow pulse sensor input pin
 // 5V-24V
+// Pull-up
 // Flow rate 0.75-1L/min
 // https://www.eptsensor.com/flow-sensor/hall-flow-sensor/fm-hl3012-flow-meter-hall-sensor.html
 #define FLOW_PULSE_PIN 39
@@ -22,20 +23,20 @@
 // Boiler tank full sense
 // Used for auto-fill logic
 // High = Boiler is full
-#define PIN_IN_WATER_FULL -1
+#define PIN_IN_WATER_FULL 21
 
 //
 // Output GPIOs
 //
 
 // Boiler heater element output (PWM)
-#define PIN_OUT_HEAT -1
+#define PIN_OUT_HEAT 16
 
 // Pump output (PWM)
-#define PIN_OUT_PUMP -1
+#define PIN_OUT_PUMP 17
 
 // Fill boiler solenoid output (On/Off)
-#define PIN_OUT_FILL_SOLENOID -1
+#define PIN_OUT_FILL_SOLENOID 5
 
 
 //

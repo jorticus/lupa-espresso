@@ -97,6 +97,7 @@ void initGpio() {
 
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
     pinMode(PIN_IN_WATER_LOW, INPUT_PULLDOWN);
+    pinMode(PIN_IN_WATER_FULL, INPUT_PULLDOWN);
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
@@ -239,7 +240,7 @@ void initTemperature() {
 void initFlow() {
     Serial.println("Initialize Pulse Counter");
 
-    pinMode(FLOW_PULSE_PIN, INPUT_PULLUP);
+    pinMode(FLOW_PULSE_PIN, INPUT);
     PulseCounter1.begin(FLOW_PULSE_PIN);
     isFlowAvailable = true;
 }
