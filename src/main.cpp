@@ -6,6 +6,8 @@
 #include <Wire.h>
 #include <Adafruit_SPIDevice.h>
 #include <Adafruit_MAX31865.h>
+#include <ArduinoOTA.h>
+#include "secrets.h"
 #include "pressure_transducer.h"
 #include "PulseCounter.h"
 #include <TFT_eSPI.h>
@@ -17,6 +19,8 @@
 #define TFT_DARK_GOLDENROD  (TFT_RGB656(0xB8,0x86,0x0B))
 #define TFT_ORANGERED       (TFT_RGB656(0xFF,0x45,0x00))
 #define TFT_DARKESTGREY     (TFT_RGB656(30,30,30)) // TODO: This is green?
+
+const char* DEVICE_NAME = "LUPA";
 
 TFT_eSPI    tft;
 TFT_eSprite gfx_left  { &tft };
@@ -34,18 +38,44 @@ enum class UiState {
     Fault,
     Brewing,
     PostBrew,
-    SensorTest
+    SensorTest,
+    FirmwareUpdate,
 };
 UiState uiState = UiState::Init;
+
+const char* UiState_Str[] = {
+    "Init",
+    "Pre-Heat",
+    "Ready",
+    "Fault",
+    "Brewing",
+    "Post-Brew",
+    "Sensor Test",
+    "Firmware Update"
+};
 
 enum class FaultState {
     NoFault,
     LowWater,
     OverTemp,
     SensorFailure,
-    NotHeating
+    NotHeating,
+    FirmwareUpdateFailure
 };
 FaultState uiFault = FaultState::NoFault;
+
+enum class OtaState {
+    Begin,
+    Progress,
+    Success,
+    Failure
+};
+
+enum class WifiConnectionStatus {
+    Connecting,
+    Failure,
+    Connected
+};
 
 struct {
     float t;
@@ -79,6 +109,20 @@ bool isFlowAvailable = false;
 
 int counter = 0;
 
+void uiDrawStatusCircle(TFT_eSprite& gfx);
+void uiRenderLabelCentered(TFT_eSprite& gfx, const char* s, int16_t y, uint16_t color);
+
+/// @brief Reset device into a fail-safe mode
+/// where any outputs are turned off.
+void failsafe() {
+    digitalWrite(PIN_OUT_HEAT, LOW);
+    digitalWrite(PIN_OUT_PUMP, LOW);
+    digitalWrite(PIN_OUT_FILL_SOLENOID, LOW);
+
+    //digitalWrite(TFT_BL, LOW);
+}
+
+
 void initGpio() {
     // BOOT button used for debugging
     pinMode(0, INPUT);
@@ -101,6 +145,8 @@ void initGpio() {
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
+
+    failsafe();
 }
 
 void setHeater(uint8_t duty) {
@@ -155,6 +201,11 @@ void initDisplay() {
 
     gfx_left.setTextSize(2);
     gfx_right.setTextSize(2);
+}
+
+void tftClearCanvas() {
+    gfx_left.fillSprite(TFT_BLACK);
+    gfx_right.fillSprite(TFT_BLACK);
 }
 
 void tftUpdateDisplay() {
@@ -245,6 +296,203 @@ void initFlow() {
     isFlowAvailable = true;
 }
 
+
+void uiRenderFirmwareUpdate(OtaState state, int param) {
+    int32_t ringw = 10;
+
+    tftClearCanvas();
+
+    if (state != OtaState::Failure) {
+        int progress = param;
+        int color = TFT_SKYBLUE;
+
+        uint32_t min_angle = 0;
+        uint32_t max_angle = 360;
+        uint32_t angle = (progress * (max_angle - min_angle) / 100) + min_angle;
+        gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, min_angle, max_angle, TFT_DARKESTGREY, TFT_BLACK, false);
+        if (angle > min_angle) {
+            gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, min_angle, angle, TFT_SKYBLUE, TFT_BLACK, false);
+        }
+    }
+    else {
+        gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, 0, 360, TFT_RED, TFT_BLACK, false);
+    }
+
+    const char* status_str = nullptr;
+    switch (state) {
+        case OtaState::Begin:
+        case OtaState::Progress:
+            status_str = "UPDATING";
+            break;
+        case OtaState::Success:
+            status_str = "DONE!";
+            break;
+        case OtaState::Failure:
+            status_str = "UPDATE FAILURE";
+            break;
+    }
+
+    if (status_str != nullptr) {
+        int16_t tw = gfx_right.textWidth(status_str);
+        int16_t th = 14;
+        gfx_right.setTextColor(TFT_WHITE);
+        gfx_right.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
+        gfx_right.print(status_str);
+    }
+
+    tftUpdateDisplay();
+}
+
+void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (wl_status_t)0) {
+    tftClearCanvas();
+
+    uiRenderLabelCentered(gfx_right, "WIFI CONNECT", -60, TFT_WHITE);
+
+    switch (state) {
+        case WifiConnectionStatus::Connecting:
+        {
+            uiRenderLabelCentered(gfx_right, "CONNECTING TO", 0, TFT_WHITE);
+            uiRenderLabelCentered(gfx_right, secrets::wifi_ssid, 30, TFT_LIGHTGREY);
+            break;
+        }
+            break;
+
+        case WifiConnectionStatus::Connected:
+        {
+            auto ip_str = WiFi.localIP().toString();
+            uiRenderLabelCentered(gfx_right, "CONNECTED", 0, TFT_WHITE);
+            uiRenderLabelCentered(gfx_right, ip_str.c_str(), 30, TFT_LIGHTGREY);
+            break;
+        }
+
+        case WifiConnectionStatus::Failure:
+        {
+            uiRenderLabelCentered(gfx_right, "ERROR", 0, TFT_WHITE);
+
+            const char* err_msg = nullptr;
+            switch (err) {
+                case WL_NO_SSID_AVAIL:
+                    // Bad SSID or AP not present
+                    err_msg = "No SSID";
+                    break;
+                case WL_CONNECT_FAILED:
+                    // Bad password
+                    err_msg = "Bad Password";
+                    break;
+                case WL_IDLE_STATUS:
+                    err_msg = "Station Idle";
+                    break;
+                case WL_CONNECTION_LOST:
+                    err_msg = "Connection Lost";
+                    break;
+            }
+
+            if (err_msg != nullptr) {
+                uiRenderLabelCentered(gfx_right, err_msg, 30, TFT_LIGHTGREY);
+            }
+            break;
+        }
+    }
+
+    tftUpdateDisplay();
+}
+
+void initWiFi()
+{
+    wl_status_t result;
+
+    WiFi.persistent(false);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        uiRenderWiFiConnect(WifiConnectionStatus::Connecting);
+        Serial.println();
+
+        WiFi.mode(WIFI_STA);
+        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+        WiFi.setHostname(secrets::device_name);
+        WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+        Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
+
+        result = (wl_status_t)WiFi.waitForConnectResult();
+        if (result != WL_CONNECTED) {
+            uiRenderWiFiConnect(WifiConnectionStatus::Failure, result);
+
+            Serial.println("WiFi Diagnostics:");
+            WiFi.printDiag(Serial);
+            Serial.println();
+
+            delay(1000);
+        }
+    }
+
+    uiRenderWiFiConnect(WifiConnectionStatus::Connected);
+
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    delay(1500);
+}
+
+void initOTA() {
+    ArduinoOTA.setHostname(DEVICE_NAME);
+
+
+	// No authentication by default
+	// ArduinoOTA.setPassword((const char *)"123");
+
+	// Password can be set with it's md5 value as well
+	// MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+	// ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+	ArduinoOTA.onStart([]() {
+        // Put system into a safe state
+		failsafe();
+        uiState = UiState::FirmwareUpdate;
+		Serial.println("OTA Initiated");
+
+        uiRenderFirmwareUpdate(OtaState::Begin, 0);
+        tftUpdateDisplay();
+	});
+
+	ArduinoOTA.onEnd([]() {
+		Serial.println("OTA Done!");
+        uiRenderFirmwareUpdate(OtaState::Success, 100);
+	});
+
+	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        // Throttle display updates to avoid slowing down the update
+		static int last_x = 0;
+		int x = (progress / (total / 20));
+		if (x != last_x) {
+		 	last_x = x;
+            int p = (progress * 100) / total;
+            uiRenderFirmwareUpdate(OtaState::Progress, p);
+        }
+	});
+
+	ArduinoOTA.onError([](ota_error_t error) {
+		Serial.println();
+		Serial.printf("Error[%u]: ", error);
+        
+        uiState = UiState::Fault;
+        uiFault = FaultState::FirmwareUpdateFailure;
+
+		if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+		else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+		else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+		else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+		else if (error == OTA_END_ERROR) Serial.println("End Failed");
+
+        uiRenderFirmwareUpdate(OtaState::Failure, (int)error);
+
+		delay(1000);
+		ESP.restart();
+	});
+
+	// Enable OTA
+	ArduinoOTA.begin();
+}
+
 void setup() {
     Serial.begin(9600);
 
@@ -255,9 +503,13 @@ void setup() {
 
     initGpio();
     initDisplay();
+    initWiFi();
+    initOTA();
+    
     initPressure();
     initTemperature();
     initFlow();
+    
 
     //uiState = UiState::Preheat;
     uiState = UiState::SensorTest;
@@ -316,6 +568,9 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
                 case FaultState::SensorFailure:
                     status_str = "SENSOR FAILURE";
                     break;
+                case FaultState::FirmwareUpdateFailure:
+                    status_str = "UPDATE FAILED";
+                    break;
                 default:
                     status_str = "FAULT";
                     break;
@@ -334,6 +589,11 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
             //status_str = "READY";
             color = TFT_DARKGREEN;
 
+            break;
+
+        case UiState::FirmwareUpdate:
+            status_str = "UPDATING";
+            color = TFT_SKYBLUE;
             break;
 
         default:
@@ -376,13 +636,13 @@ void uiRenderGauge() {
 
 unsigned long t_last = 0;
 
-void uiRenderLabelCentered(const char* s, int16_t y, uint16_t color = TFT_WHITE) {
+void uiRenderLabelCentered(TFT_eSprite& gfx, const char* s, int16_t y, uint16_t color = TFT_WHITE) {
     // Place below the status label
-    int16_t tw = gfx_right.textWidth(s);
+    int16_t tw = gfx.textWidth(s);
     int16_t th = 14; // TODO: Measure from font
-    gfx_right.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2 + y);
-    gfx_right.setTextColor(color);
-    gfx_right.print(s);
+    gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2 + y);
+    gfx.setTextColor(color);
+    gfx.print(s);
 }
 
 void uiRenderTemperatureGraph(TFT_eSprite& gfx, uint16_t color = TFT_WHITE) {
@@ -483,7 +743,7 @@ void uiRenderPreheat() {
     buffer[sizeof(buffer)-1] = '\0';
 
     // Place below the status label
-    uiRenderLabelCentered(buffer, 20);
+    uiRenderLabelCentered(gfx_right, buffer, 20);
 }
 
 void uiRenderReady() {
@@ -510,11 +770,11 @@ void uiRenderReady() {
         snprintf(buffer, sizeof(buffer), "%.1f", brewTimeSec);
         buffer[sizeof(buffer)-1] = '\0';
 
-        uiRenderLabelCentered("BREW TIME:", -20);
-        uiRenderLabelCentered(buffer, 0);
+        uiRenderLabelCentered(gfx_right, "BREW TIME:", -20);
+        uiRenderLabelCentered(gfx_right, buffer, 0);
     }
     else {
-        uiRenderLabelCentered("READY", 0);
+        uiRenderLabelCentered(gfx_right, "READY", 0);
     }
 
 }
@@ -551,7 +811,7 @@ void uiRenderBrewing() {
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(buffer, 20);
+        uiRenderLabelCentered(gfx_right, buffer, 20);
     }
 
     {
@@ -561,7 +821,7 @@ void uiRenderBrewing() {
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(buffer, 40);
+        uiRenderLabelCentered(gfx_right, buffer, 40);
     }
 
     uiRenderGauge();
@@ -584,7 +844,7 @@ void uiRenderSensorTest()
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(buffer, -60, TFT_DARKGREEN);
+        uiRenderLabelCentered(gfx_right, buffer, -60, TFT_DARKGREEN);
     }
 
     {
@@ -597,7 +857,7 @@ void uiRenderSensorTest()
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(buffer, -30, TFT_SKYBLUE);
+        uiRenderLabelCentered(gfx_right, buffer, -30, TFT_SKYBLUE);
     }
 
 
@@ -611,7 +871,7 @@ void uiRenderSensorTest()
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(buffer, 0, TFT_DARKCYAN);
+        uiRenderLabelCentered(gfx_right, buffer, 0, TFT_DARKCYAN);
     }
 
     {
@@ -624,7 +884,7 @@ void uiRenderSensorTest()
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(buffer, 30, TFT_RED);
+        uiRenderLabelCentered(gfx_right, buffer, 30, TFT_RED);
     }
 }
 
@@ -712,35 +972,17 @@ bool isBootBtnPressed() {
 
 void printState(UiState uiState) {
     Serial.print("State: ");
-    switch (uiState) {
-        case UiState::Init:
-            Serial.println("Init");
-            break;
-        case UiState::Ready:
-            Serial.println("Ready");
-            break;
-        case UiState::Preheat:
-            Serial.println("Pre-Heat");
-            break;
-        case UiState::Brewing:
-            Serial.println("Brewing");
-            break;
-        case UiState::PostBrew:
-            Serial.println("Post-Brew");
-            break;
-        case UiState::Fault:
-            Serial.println("Fault");
-            break;
-        case UiState::SensorTest:
-            Serial.println("Sensor Test");
-            break;
-        default:
-            Serial.println((int)uiState);
+    int s = (int)uiState;
+    if (s < sizeof(UiState_Str)) {
+        Serial.println(UiState_Str[s]);
+    }
+    else {
+        Serial.println(s);
     }
 }
 
-void processState() {
-
+void processState()
+{
     static UiState _lastUiState = UiState::Init;
     if (uiState != _lastUiState) {
         _lastUiState = uiState;
@@ -811,7 +1053,8 @@ void processState() {
     }
 }
 
-void render() {
+void render()
+{
     // Drawing
     {
         gfx_left.fillSprite(TFT_BLACK);
@@ -868,11 +1111,16 @@ void render() {
     }
 }
 
-void loop() {
+void loop()
+{
+    ArduinoOTA.handle();
 
-    readSensors();
+    if (uiState != UiState::FirmwareUpdate)
+    {
+        readSensors();
 
-    processState();
+        processState();
 
-    render();
+        render();
+    }
 }
