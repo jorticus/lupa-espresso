@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "pressure_transducer.h"
+#include "PressureTransducer.h"
 
 #define REGISTER_SAMPLE_CONTROL     0x30
 #define REGISTER_PRESSURE_VALUE     0x06

@@ -8,7 +8,7 @@
 #include <Adafruit_MAX31865.h>
 #include <ArduinoOTA.h>
 #include "secrets.h"
-#include "pressure_transducer.h"
+#include "PressureTransducer.h"
 #include "PulseCounter.h"
 #include <TFT_eSPI.h>
 #include "config.h"

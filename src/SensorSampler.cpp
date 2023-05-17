@@ -6,7 +6,7 @@
 
 #include "hardware.h"
 #include "Adafruit_MAX31865.h"
-#include "pressure_transducer.h"
+#include "PressureTransducer.h"
 #include "PulseCounter.h"
 
 extern Adafruit_MAX31865   rtd;
