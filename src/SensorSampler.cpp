@@ -17,17 +17,24 @@ ValueArray<float, numSamples> temperatureSamples;
 ValueArray<float, numSamples> pressureSamples;
 ValueArray<float, numSamples> flowSamples;
 
-// 1Hz filter, assuming sample rate of 5Hz (200ms)
 // https://wirelesslibrary.labs.b-com.com/FIRfilterdesigner/#/#result-container
-static float filter_taps[] = {
-    0.000013852416493342338,-0.0005731238127498802,-0.0009721997930368535,-0.0003987652239076082,0.0015930558424197066,0.003593109253255786,0.0027499718691119065,-0.0023913231618520802,-0.008767551350291674,-0.009422988391483304,0.0004666650013992939,0.016363739680210786,0.023898422721949482,0.009361110013092595,-0.024837897952016432,-0.053559581273241195,-0.041269022948776955,0.03159907402929975,0.14754130006838234,0.2552663330169204,0.29914396401894533,0.2552663330169204,0.14754130006838234,0.03159907402929975,-0.041269022948776955,-0.053559581273241195,-0.024837897952016432,0.009361110013092595,0.023898422721949482,0.016363739680210786,0.0004666650013992939,-0.009422988391483304,-0.008767551350291674,-0.0023913231618520802,0.0027499718691119065,0.003593109253255786,0.0015930558424197066,-0.0003987652239076082,-0.0009721997930368535,-0.0005731238127498802,0.000013852416493342338
+static float filter_taps_10hz[] = {
+    // 0.5Hz @ 10Hz sample
+    //0.000013852416493342338,-0.0005731238127498802,-0.0009721997930368535,-0.0003987652239076082,0.0015930558424197066,0.003593109253255786,0.0027499718691119065,-0.0023913231618520802,-0.008767551350291674,-0.009422988391483304,0.0004666650013992939,0.016363739680210786,0.023898422721949482,0.009361110013092595,-0.024837897952016432,-0.053559581273241195,-0.041269022948776955,0.03159907402929975,0.14754130006838234,0.2552663330169204,0.29914396401894533,0.2552663330169204,0.14754130006838234,0.03159907402929975,-0.041269022948776955,-0.053559581273241195,-0.024837897952016432,0.009361110013092595,0.023898422721949482,0.016363739680210786,0.0004666650013992939,-0.009422988391483304,-0.008767551350291674,-0.0023913231618520802,0.0027499718691119065,0.003593109253255786,0.0015930558424197066,-0.0003987652239076082,-0.0009721997930368535,-0.0005731238127498802,0.000013852416493342338
+
+    // 20Hz @ 100Hz sample
+    //0.000013852416495175956,-0.0005731238127494758,-0.0009721997930380986,-0.00039876522390940147,0.0015930558424190862,0.0035931092532572894,0.002749971869114803,-0.0023913231618499036,-0.00876755135029208,-0.009422988391486293,0.0004666650013959363,0.01636373968020993,0.023898422721952334,0.009361110013097404,-0.02483789795201317,-0.05355958127324209,-0.04126902294878148,0.03159907402929509,0.14754130006838131,0.25526633301692403,0.29914396401895105,0.25526633301692403,0.14754130006838131,0.03159907402929509,-0.04126902294878148,-0.05355958127324209,-0.02483789795201317,0.009361110013097404,0.023898422721952334,0.01636373968020993,0.0004666650013959363,-0.009422988391486293,-0.00876755135029208,-0.0023913231618499036,0.002749971869114803,0.0035931092532572894,0.0015930558424190862,-0.00039876522390940147,-0.0009721997930380986,-0.0005731238127494758,0.000013852416495175956
+
+    // 10Hz @ 100Hz sample
+    // 1Hz @ 10Hz sample
+    -0.0038816404946323798,0.005186306757490993,0.011187306915538823,0.020942863551074237,0.03385108254853396,0.0489843113646178,0.0649614184647876,0.08006975505821248,0.09251335964912975,0.10070514571819074,0.10356516269016608,0.10070514571819074,0.09251335964912975,0.08006975505821248,0.0649614184647876,0.0489843113646178,0.03385108254853396,0.020942863551074237,0.011187306915538823,0.005186306757490993,-0.0038816404946323798
 };
-const int SAMPLEFILTER_TAP_NUM = sizeof(filter_taps) / sizeof(filter_taps[0]);
+const int SAMPLEFILTER_TAP_NUM = sizeof(filter_taps_10hz) / sizeof(filter_taps_10hz[0]);
 
 template <size_t N_TAPS>
 class FirFilter {
 public:
-    FirFilter() : samples(), last_index(0)
+    FirFilter(const float taps[N_TAPS]) : taps(taps), samples(), last_index(0)
     {
         for (int i = 0; i < N_TAPS; i++) {
             samples[i] = 0;
@@ -45,19 +52,21 @@ public:
         int index = last_index;
         for (int i = 0; i < N_TAPS; ++i) {
             index = index != 0 ? index-1 : N_TAPS-1;
-            acc += samples[index] * filter_taps[i];
+            acc += samples[index] * taps[i];
         };
         return acc;
     }
 
+private:
+    const float* taps;
     std::array<float, N_TAPS> samples;
     unsigned int last_index;
     bool ready;
 };
 
-FirFilter<SAMPLEFILTER_TAP_NUM> filter1;
-FirFilter<SAMPLEFILTER_TAP_NUM> filter2;
-FirFilter<SAMPLEFILTER_TAP_NUM> filter3;
+FirFilter<SAMPLEFILTER_TAP_NUM> filter1 { filter_taps_10hz };
+FirFilter<SAMPLEFILTER_TAP_NUM> filter2 { filter_taps_10hz };
+FirFilter<SAMPLEFILTER_TAP_NUM> filter3 { filter_taps_10hz };
 
 static float value_pressure = 0.0f;
 static float value_temperature = 0.0f;
@@ -67,10 +76,12 @@ static bool is_valid_pressure = false;
 static bool is_valid_temperature = false;
 static bool is_valid_flow_rate = false;
 
-static const unsigned long sampleRateMs = 200; // 5Hz
+static const unsigned long sampleRateMs = 10;
+static const unsigned long temperatureSampleRateMs = 100;
 const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
 static TimerHandle_t timer;
+static TimerHandle_t timer2;
 
 /// @brief Sensor sampling timer, records sensor readings at a regular interval
 /// @param timer FreeRTOS timer handle
@@ -89,20 +100,47 @@ static void onSensorTimer(TimerHandle_t timer) {
     is_valid_pressure = sample.is_valid;
     pressure.startSample();
 
+    // The pulse counter should always have a valid sample, though it runs with its own timer
+    // and may not be aligned to our sample rate.
+    auto pulses_per_second = PulseCounter1.getFrequency();
+    if (pulses_per_second < 300.0f) {
+        const float correction = 0.155f;
+        value_flow_rate = pulses_per_second * correction;
+        is_valid_flow_rate = true;
+    }
+    else {
+        // Ignore spurious reading (repeat sample)
+    }
+
+    auto t2 = millis();
+
+    if ((t2 - t1) > sampleRateMs) {
+        // Above code took longer than the timer interval to execute
+        Serial.println("TIMER1 OVERFLOW");
+    }
+
+    // Serial.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
+    //     value_pressure,
+    //     value_temperature,
+    //     value_flow_rate,
+    //     (t2 - t1)
+    // );
+}
+
+static void onTemperatureTimer(TimerHandle_t timer) {
+
+    auto t1 = millis();
+
     // MAX chip is configured for an automatic 60Hz sample rate.
     // Since we're only sampling at ~10Hz, we should always have a sample available.
     auto raw = rtd.readSample();
     if (raw != 0) {
-        //rtd_value = raw;
         filter2.add(raw);
         float raw_filtered = filter2.get();
         auto temperature = rtd.calculateTemperature(raw_filtered, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
         if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
             value_temperature = temperature;
             is_valid_temperature = true;
-            //filter2.add(temperature);
-            //rtd_value = temperature;
-            //rtd_value = filter2.get();
         }
         else {
             is_valid_temperature = false;
@@ -111,44 +149,32 @@ static void onSensorTimer(TimerHandle_t timer) {
         is_valid_temperature = false;
     }
 
-
-    // The pulse counter should always have a valid sample, though it runs with its own timer
-    // and may not be aligned to our sample rate.
-    auto pulses_per_second = PulseCounter1.getFrequency();
-    if (pulses_per_second > 0.1f && pulses_per_second < 300.0f) {
-        const float correction = 0.155f;
-        value_flow_rate = pulses_per_second * correction;
-        is_valid_flow_rate = true;
-    }
-    else {
-        // Invalid value, clamp to 0
-        value_flow_rate = 0.0f;
-        is_valid_flow_rate = false;
-    }
-
     auto t2 = millis();
 
-    if ((t2 - t1) > sampleRateMs) {
+    if ((t2 - t1) > temperatureSampleRateMs) {
         // Above code took longer than the timer interval to execute
-        // Typically takes 5-90ms, but sometimes exceeds 100ms
-        Serial.println("TIMER OVERFLOW");
+        Serial.println("TIMER2 OVERFLOW");
     }
 
-    Serial.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
-        value_pressure,
-        value_temperature,
-        value_flow_rate,
-        (t2 - t1)
-    );
+    //Serial.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
 }
 
 void SensorSampler::Initialize() {
     Serial.println("Initialize Sensor Sampler");
 
+    timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdTRUE, nullptr, onTemperatureTimer);
+    if (timer2 == nullptr) {
+        Serial.println("ERROR: Could not allocate SensorSamplerT timer");
+    }
     timer = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdTRUE, nullptr, onSensorTimer);
+    if (timer == nullptr) {
+        Serial.println("ERROR: Could not allocate SensorSampler timer");
+    }
+
 }
 
 void SensorSampler::Start() {
+    xTimerStart(timer2, 0);
     xTimerStart(timer, 0);
 
     rtd.autoConvert(true);
@@ -158,6 +184,7 @@ void SensorSampler::Start() {
 
 void SensorSampler::Stop() {
     xTimerStop(timer, 0);
+    xTimerStop(timer2, 0);
 
     rtd.autoConvert(false);
 }
