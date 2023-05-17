@@ -39,6 +39,9 @@ extern ValueArray<float, numSamples> temperatureSamples;
 extern ValueArray<float, numSamples> pressureSamples;
 extern ValueArray<float, numSamples> flowSamples;
 
+ValueArray<float, numSamples> pressureSamplesFrozen;
+ValueArray<float, numSamples> flowSamplesFrozen;
+
 enum class UiState {
     Init,
     Preheat,
@@ -177,7 +180,14 @@ bool isMaxSampleReady() {
 }
 
 bool isLeverPulled() {
-    return (digitalRead(PIN_IN_LEVER) == HIGH);
+    //return (digitalRead(PIN_IN_LEVER) == HIGH);
+
+    // Detect lever by measuring water flow
+    return (
+        (uiState != UiState::Preheat) && 
+        SensorSampler::isFlowRateValid() && 
+        (SensorSampler::getFlowRate() > 1.0f)
+    );
 }
 
 bool isWaterTankLow() {
@@ -522,8 +532,8 @@ void setup() {
     SensorSampler::Start();
     
 
-    //uiState = UiState::Preheat;
-    uiState = UiState::SensorTest;
+    uiState = UiState::Preheat;
+    //uiState = UiState::SensorTest;
 
     // If sensors could not be initialized, indicate fault
     if (uiState != UiState::SensorTest && 
@@ -544,7 +554,7 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
 
 
     const char* status_str = nullptr;
-    uint32_t color = TFT_WHITE;
+    uint32_t color = TFT_BLACK;
 
     switch (uiState) {
         case UiState::Init:
@@ -598,7 +608,7 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
             // TODO: Connect the above pulse animation and relax back into an idle state
 
             //status_str = "READY";
-            color = TFT_DARKGREEN;
+            //color = TFT_DARKGREEN;
 
             break;
 
@@ -611,7 +621,9 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
             return;
     }
 
-    gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
+    if (color != TFT_BLACK) {
+        gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
+    }
 
     if (status_str != nullptr) {
         int16_t tw = gfx.textWidth(status_str);
@@ -699,7 +711,7 @@ void uiRenderLabelCentered(TFT_eSprite& gfx, const char* s, int16_t y, uint16_t 
 template <typename T, size_t N>
 void uiRenderGraph(TFT_eSprite& gfx, ValueArray<T,N>& samples, float min_value, float max_value, uint16_t color = TFT_WHITE) {
 
-    int32_t margin = 20;
+    int32_t margin = 40;
     int32_t x = margin;
     int32_t y = TFT_HEIGHT / 2; // Vertically centered
     int32_t h = TFT_HEIGHT / 3;
@@ -709,6 +721,11 @@ void uiRenderGraph(TFT_eSprite& gfx, ValueArray<T,N>& samples, float min_value, 
     // Offset into the array so that the last sample drawn is the most recent available.
     int start = samples.size() - w;
     if (start < 0) start = 0;
+
+    // Align the graph to the right side of the screen
+    int offset = w - samples.size();
+    if (offset < 0) offset = 0;
+    x += offset;
 
     int32_t last_x = -1;
     int32_t last_y = -1;
@@ -733,33 +750,43 @@ void uiRenderGraph(TFT_eSprite& gfx, ValueArray<T,N>& samples, float min_value, 
     }
 }
 
+void uiFreezeGraphs() {
+    for (int i = 0; i < pressureSamples.size(); i++) {
+        pressureSamplesFrozen.add(pressureSamples[i]);
+    }
+    for (int i = 0; i < flowSamples.size(); i++) {
+        flowSamplesFrozen.add(flowSamples[i]);
+    }
+}
+
 void uiRenderTemperatureGraph(TFT_eSprite& gfx, uint16_t color = TFT_WHITE) {
     float min_value = getTemperatureMinRange();
     float max_value = getTemperatureMaxRange();
     uiRenderGraph(gfx, temperatureSamples, min_value, max_value, color);
 }
 
-void uiRenderBrewGraph(TFT_eSprite& gfx) {
+void uiRenderBrewGraph(TFT_eSprite& gfx, bool freeze = false) {
     {
         float min_value = 0.0f;
         float max_value = 12.0f;
+        auto& samples = (freeze) ? pressureSamplesFrozen : pressureSamples;
 
-        uiRenderGraph(gfx, pressureSamples, min_value, max_value, TFT_DARKGREEN);
+        uiRenderGraph(gfx, samples, min_value, max_value, TFT_DARKGREEN);
     }
 
     {
         float min_value = 0.0f;
         float max_value = 10.0f;
+        auto& samples = (freeze) ? flowSamplesFrozen : flowSamples;
 
-        uiRenderGraph(gfx, flowSamples, min_value, max_value, TFT_SKYBLUE);
+        uiRenderGraph(gfx, samples, min_value, max_value, TFT_SKYBLUE);
     }
 }
 
+void uiRenderTemperatureLeft()
+{
+    uiRenderTemperatureGraph(gfx_left);
 
-void uiRenderPreheat() {
-
-    uiRenderTemperatureGraph(gfx_right);
-    uiRenderMargin();
     // Render current temperature
     char buffer[20];
     if (SensorSampler::isTemperatureValid()) {
@@ -769,11 +796,18 @@ void uiRenderPreheat() {
     }
     buffer[sizeof(buffer)-1] = '\0';
 
-    // Place below the status label
-    uiRenderLabelCentered(gfx_right, buffer, 20);
+    uiRenderLabelCentered(gfx_left, buffer, 0);
+
+    uiRenderTemperatureGauge(gfx_left);
 }
 
-void uiRenderReady() {
+void uiRenderPreheat()
+{
+
+}
+
+void uiRenderReady()
+{
     // Left Display:
     //     - Temperature Gauge & Graph ??
     // Right Display:
@@ -789,7 +823,7 @@ void uiRenderReady() {
         //     - mL delivered
 
         // Display snapshot of last brew graph
-        uiRenderBrewGraph(gfx_right);
+        uiRenderBrewGraph(gfx_right, true);
         uiRenderMargin();
 
         float brewTimeSec = (brew.end_brew_time - brew.start_brew_time) / 1000.0f;
@@ -801,9 +835,27 @@ void uiRenderReady() {
         uiRenderLabelCentered(gfx_right, buffer, 0);
     }
     else {
-        uiRenderLabelCentered(gfx_right, "READY", 0);
+        //uiRenderLabelCentered(gfx_right, "READY", 0);
+        
+        uiRenderBrewGraph(gfx_right);
+        uiRenderPressureGauge(gfx_right);
+        uiRenderFlowGauge(gfx_right);
     }
 
+
+    {
+        // Render pressure label
+        char buffer[20];
+        if (SensorSampler::isPressureValid()) {
+            snprintf(buffer, sizeof(buffer), "%.2f Bar", SensorSampler::getPressure());
+        } else {
+            snprintf(buffer, sizeof(buffer), "- Bar");
+        }
+        buffer[sizeof(buffer)-1] = '\0';
+
+        // Place below the status label
+        uiRenderLabelCentered(gfx_right, buffer, 60);
+    }
 }
 
 void uiRenderBrewing() {
@@ -851,8 +903,7 @@ void uiRenderBrewing() {
         }
         buffer[sizeof(buffer)-1] = '\0';
 
-        // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, 40);
+        uiRenderLabelCentered(gfx_right, buffer, 60);
     }
 
     uiRenderPressureGauge(gfx_right);
@@ -973,9 +1024,9 @@ void processState()
         }
         
         // TESTING:
-        if (millis() > 5000) {
-            uiState = UiState::Ready;
-        }
+        // if (millis() > 5000) {
+        //     uiState = UiState::Ready;
+        // }
     }
 
     if (uiState == UiState::Fault) {
@@ -1004,9 +1055,17 @@ void processState()
         //uiState = UiState::PostBrew;
         uiState = UiState::Ready;
 
+        uiFreezeGraphs();
+
         // Stop brew timer
         brew.end_brew_time = millis();
         return;
+    }
+
+    if (uiState == UiState::Ready && ((millis() - brew.end_brew_time) > 60000)) {
+        // Reset ready page after some timeout
+        brew.end_brew_time = 0;
+        brew.start_brew_time = 0;
     }
 }
 
@@ -1019,20 +1078,19 @@ void render()
         gfx_left.fillSprite(TFT_BLACK);
         gfx_right.fillSprite(TFT_BLACK);
 
-        //uiRenderGraph();
-
-        uiDrawStatusCircle(gfx_right);
-        uiDrawStatusCircle(gfx_left);
 
         switch (uiState) {
             case UiState::Preheat:
                 uiRenderPreheat();
+                uiRenderTemperatureLeft();
                 break;
             case UiState::Ready:
                 uiRenderReady();
+                uiRenderTemperatureLeft();
                 break;
             case UiState::Brewing:
                 uiRenderBrewing();
+                uiRenderTemperatureLeft();
                 break;
             case UiState::SensorTest:
                 uiRenderSensorTest();
@@ -1043,6 +1101,8 @@ void render()
             default:
                 break;
         }
+
+        uiDrawStatusCircle(gfx_right);
 
 #if false
 
