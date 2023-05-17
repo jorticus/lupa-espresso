@@ -99,7 +99,7 @@ static void onSensorTimer(TimerHandle_t timer) {
     else {
         filter1.add(0);
     }
-    value_pressure = filter1.get();
+    value_pressure = filter1.get() * 0.0001f;
     is_valid_pressure = sample.is_valid;
     pressure.startSample();
 
@@ -119,6 +119,7 @@ static void onSensorTimer(TimerHandle_t timer) {
 }
 
 static void onTemperatureTimer(TimerHandle_t timer) {
+    static int divider = 0;
 
     auto t1 = millis();
 
@@ -153,6 +154,16 @@ static void onTemperatureTimer(TimerHandle_t timer) {
         else {
             // Ignore spurious reading (repeat sample)
         }
+    }
+
+    // 100ms per tick
+    pressureSamples.add(value_pressure);
+    flowSamples.add(value_flow_rate);
+
+    // 1 sec per tick
+    if (divider++ == 10) {
+        divider = 0;
+        temperatureSamples.add(value_temperature);
     }
 
     auto t2 = millis();
@@ -204,7 +215,7 @@ float SensorSampler::getTemperature() {
 }
 
 float SensorSampler::getPressure() {
-    return value_pressure * 0.0001f;
+    return value_pressure;
 }
 
 float SensorSampler::getFlowRate() {

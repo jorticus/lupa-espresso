@@ -656,16 +656,23 @@ void uiRenderPressureGauge(TFT_eSprite& gfx) {
     uiRenderGauge(gfx, value_norm, TFT_DARKGREEN);
 }
 
+float getTemperatureMaxRange() {
+    return 140.0f;
+}
+float getTemperatureMinRange() {
+    if ((uiState != UiState::Preheat) && (SensorSampler::getTemperature() >= 80.0f)) {
+        // Use smaller range when up to temperature
+        return 80.0f;
+    }
+    else {
+        return 20.0f;
+    }
+}
+
 void uiRenderTemperatureGauge(TFT_eSprite& gfx) {
     float temperature = SensorSampler::getTemperature();
-    float min_temp = 20.0f;
-    float max_temp = 140.0f;
-
-    if ((uiState != UiState::Preheat) && (temperature > 80.0f)) {
-        // Use smaller range when up to temperature
-        min_temp = 80.0f;
-    }
-
+    float min_temp = getTemperatureMinRange();
+    float max_temp = getTemperatureMaxRange();
     float value_norm = (temperature - min_temp) / (max_temp - min_temp);
     uiRenderGauge(gfx, value_norm, TFT_RED);
 }
@@ -689,9 +696,8 @@ void uiRenderLabelCentered(TFT_eSprite& gfx, const char* s, int16_t y, uint16_t 
     gfx.print(s);
 }
 
-void uiRenderTemperatureGraph(TFT_eSprite& gfx, uint16_t color = TFT_WHITE) {
-    float min_value = 10.0f;
-    float max_value = 30.0f;
+template <typename T, size_t N>
+void uiRenderGraph(TFT_eSprite& gfx, ValueArray<T,N>& samples, float min_value, float max_value, uint16_t color = TFT_WHITE) {
 
     int32_t margin = 20;
     int32_t x = margin;
@@ -701,76 +707,51 @@ void uiRenderTemperatureGraph(TFT_eSprite& gfx, uint16_t color = TFT_WHITE) {
 
     // The sample array may be greater than the width.
     // Offset into the array so that the last sample drawn is the most recent available.
-    int start = temperatureSamples.size() - w;
+    int start = samples.size() - w;
     if (start < 0) start = 0;
 
-    for (int i = start; i < temperatureSamples.size(); i++) {
-        auto sample = temperatureSamples[i];
+    int32_t last_x = -1;
+    int32_t last_y = -1;
+    for (int i = start; i < samples.size(); i++) {
+        auto sample = samples[i];
 
         if (sample < min_value) sample = min_value;
         else if (sample > max_value) sample = max_value;
 
-        int32_t offset = (((sample - min_value) / (max_value - min_value)) * h);
+        int32_t offset = (((sample - min_value) / (max_value - min_value)) * h * 2);
         int32_t yy = y + h - offset;
-        gfx.drawPixel(x, yy, color);
+        int32_t d = last_y - yy;
+        if ((last_y != -1) && (d > 1 || d < -1)) {
+            gfx.drawLine(last_x, last_y, x, yy, color);
+        }
+        else {
+            gfx.drawPixel(x, yy, color);
+        }
+        last_x = x;
+        last_y = yy;
         x++;
     }
+}
 
-
-    //gfx_right.drawLine()
+void uiRenderTemperatureGraph(TFT_eSprite& gfx, uint16_t color = TFT_WHITE) {
+    float min_value = getTemperatureMinRange();
+    float max_value = getTemperatureMaxRange();
+    uiRenderGraph(gfx, temperatureSamples, min_value, max_value, color);
 }
 
 void uiRenderBrewGraph(TFT_eSprite& gfx) {
-    int32_t margin = 20;
-    int32_t x = margin;
-    int32_t y = TFT_HEIGHT / 2; // Vertically centered
-    int32_t h = TFT_HEIGHT / 3;
-    int32_t w = TFT_WIDTH - (margin * 2);
-
     {
-        float min_value = 1000.0f;
-        float max_value = 12000.0f;
+        float min_value = 0.0f;
+        float max_value = 12.0f;
 
-        // The sample array may be greater than the width.
-        // Offset into the array so that the last sample drawn is the most recent available.
-        int start = pressureSamples.size() - w;
-        if (start < 0) start = 0;
-
-        x = margin;
-        for (int i = start; i < pressureSamples.size(); i++) {
-            auto sample = pressureSamples[i];
-
-            if (sample < min_value) sample = min_value;
-            else if (sample > max_value) sample = max_value;
-
-            int32_t offset = (((sample - min_value) / (max_value - min_value)) * h);
-            int32_t yy = y + h - offset;
-            gfx.drawPixel(x, yy, TFT_DARKGREEN);
-            x++;
-        }
+        uiRenderGraph(gfx, pressureSamples, min_value, max_value, TFT_DARKGREEN);
     }
 
     {
         float min_value = 0.0f;
-        float max_value = 200.0f;
+        float max_value = 10.0f;
 
-        // The sample array may be greater than the width.
-        // Offset into the array so that the last sample drawn is the most recent available.
-        int start = flowSamples.size() - w;
-        if (start < 0) start = 0;
-
-        x = margin;
-        for (int i = start; i < flowSamples.size(); i++) {
-            auto sample = flowSamples[i];
-
-            if (sample < min_value) sample = min_value;
-            else if (sample > max_value) sample = max_value;
-
-            int32_t offset = (((sample - min_value) / (max_value - min_value)) * h);
-            int32_t yy = y + h - offset;
-            gfx.drawPixel(x, yy, TFT_SKYBLUE);
-            x++;
-        }
+        uiRenderGraph(gfx, flowSamples, min_value, max_value, TFT_SKYBLUE);
     }
 }
 
@@ -881,10 +862,8 @@ void uiRenderBrewing() {
 
 void uiRenderSensorTest()
 {
-
-    uiRenderTemperatureGraph(gfx_right, TFT_RED);
+    uiRenderTemperatureGraph(gfx_left, TFT_RED);
     uiRenderBrewGraph(gfx_right);
-    uiRenderMargin();
 
     {
         char buffer[20];
