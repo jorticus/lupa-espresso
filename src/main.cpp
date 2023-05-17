@@ -16,10 +16,11 @@
 #include "value_array.h"
 #include "SensorSampler.h"
 
-#define TFT_RGB656(r,g,b)      ((((r & 0xFF) >> 3) << 11) | (((g & 0xFF) >> 2) << 6) | ((b & 0xFF) >> 2))
+#define TFT_RGB656(r,g,b)      ((((r & 0xFF) >> 3) << 11) | (((g & 0xFF) >> 2) << 5) | ((b & 0xFF) >> 3))
 #define TFT_DARK_GOLDENROD  (TFT_RGB656(0xB8,0x86,0x0B))
 #define TFT_ORANGERED       (TFT_RGB656(0xFF,0x45,0x00))
-#define TFT_DARKESTGREY     (TFT_RGB656(30,30,30)) // TODO: This is green?
+#define TFT_DARKESTGREY     0x38E7
+
 
 const char* DEVICE_NAME = "LUPA";
 
@@ -626,11 +627,9 @@ void uiRenderMargin() {
     // gfx_right.drawArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, TFT_BLACK, TFT_BLACK, false);
 }
 
-void uiRenderGauge() {
-    //float value_norm = (values.t - 15.0f) / (25.0f - 15.0f);
-    float min_pressure = 1.0f; // Ambient air pressure
-    float max_pressure = 12.0f;
-    float value_norm = (SensorSampler::getPressure() - min_pressure) / (max_pressure - min_pressure);
+void uiRenderGauge(TFT_eSprite& gfx, float value_norm, uint32_t fg_color, int32_t margin = 0) {
+    int32_t ring_w = 10;
+
     if (value_norm < 0.0f) value_norm = 0.0f;
     if (value_norm > 1.0f) value_norm = 1.0f;
     uint32_t min_angle = 90-30;
@@ -638,10 +637,45 @@ void uiRenderGauge() {
     uint32_t angle = (value_norm * (max_angle - min_angle)) + min_angle;
     // if (angle > max_angle) angle = max_angle;
     // if (angle < min_angle) angle = min_angle;
-    gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-10, min_angle, max_angle, TFT_DARKESTGREY, TFT_BLACK, true);
+
+    int32_t x = TFT_WIDTH/2;
+    int32_t y = TFT_HEIGHT/2;
+    int32_t r1 = TFT_WIDTH/2 - margin;
+    int32_t r2 = r1 - ring_w;
+    gfx.drawSmoothArc(x, y, r1, r2, min_angle, max_angle, TFT_DARKESTGREY, TFT_BLACK, true);
     if (angle > min_angle) {
-        gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-10, min_angle, angle, TFT_DARKGREEN, TFT_BLACK, true);
+        gfx.drawSmoothArc(x, y, r1, r2, min_angle, angle, fg_color, TFT_BLACK, true);
     }
+}
+
+void uiRenderPressureGauge(TFT_eSprite& gfx) {
+     //float value_norm = (values.t - 15.0f) / (25.0f - 15.0f);
+    float min_pressure = 1.0f; // Ambient air pressure
+    float max_pressure = 12.0f;
+    float value_norm = (SensorSampler::getPressure() - min_pressure) / (max_pressure - min_pressure);
+    uiRenderGauge(gfx, value_norm, TFT_DARKGREEN);
+}
+
+void uiRenderTemperatureGauge(TFT_eSprite& gfx) {
+    float temperature = SensorSampler::getTemperature();
+    float min_temp = 20.0f;
+    float max_temp = 140.0f;
+
+    if ((uiState != UiState::Preheat) && (temperature > 80.0f)) {
+        // Use smaller range when up to temperature
+        min_temp = 80.0f;
+    }
+
+    float value_norm = (temperature - min_temp) / (max_temp - min_temp);
+    uiRenderGauge(gfx, value_norm, TFT_RED);
+}
+
+void uiRenderFlowGauge(TFT_eSprite& gfx) {
+    float flow = SensorSampler::getFlowRate();
+    float min_flow = 0.0f;
+    float max_flow = 10.0f;
+    float value_norm = (flow - min_flow) / (max_flow - min_flow);
+    uiRenderGauge(gfx, value_norm, TFT_SKYBLUE, 15);
 }
 
 unsigned long t_last = 0;
@@ -840,7 +874,9 @@ void uiRenderBrewing() {
         uiRenderLabelCentered(gfx_right, buffer, 40);
     }
 
-    uiRenderGauge();
+    uiRenderPressureGauge(gfx_right);
+    uiRenderFlowGauge(gfx_right);
+    uiRenderTemperatureGauge(gfx_left);
 }
 
 void uiRenderSensorTest()
@@ -900,116 +936,13 @@ void uiRenderSensorTest()
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, 30, TFT_RED);
+        uiRenderLabelCentered(gfx_left, buffer, 0, TFT_RED);
     }
 
-    uiRenderGauge();
+    uiRenderPressureGauge(gfx_right);
+    uiRenderFlowGauge(gfx_right);
+    uiRenderTemperatureGauge(gfx_left);
 }
-
-/*
-void readSensors() {
-    static unsigned long p_t1 = 0;
-    static unsigned long t_t1 = 0;
-    static unsigned long f_t1 = 0;
-    if (isPressureAvailable && !values.p_reading)
-    {
-        pressure.startSample();
-        p_t1 = millis();
-        values.p_reading = true;
-
-        // while (!pressure.isSampleReady())
-        //     continue;
-    }
-
-    // while (!rtd.isSampleReady())
-    //     continue;
-    // while (digitalRead(MAX_RDY) != LOW)
-    //     continue;
-
-    // RTD sample rate: 85ms
-    if (isRtdAvailable && rtd.isSampleReady()) {// isMaxSampleReady()) {
-        auto raw_rtd = rtd.readSample();
-        //Serial.printf("T: %d\n", raw_rtd);
-        values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
-        values.t_valid = (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP);
-
-        Serial.printf("T Sample: %d\n", (millis() - t_t1));
-        t_t1 = millis();
-    }
-
-    //while (!FreqCountESP.available())
-    // while (!PulseCounter1.isSampleReady())
-    //     continue;
-    // auto f = PulseCounter1.getFrequency();
-
-    // Pulse counter sample rate: 250ms
-    if (isFlowAvailable && PulseCounter1.isSampleReady()) {
-        // Value typically ranges from 40-270 Hz
-        float f = PulseCounter1.getFrequency();
-        // Remove outliers (eg, from noise)
-        if (f > 0.1f && f < 300.0f) {
-            const float correction = 0.155f;
-            values.f = f * correction;
-        }
-        else {
-            values.f = 0.0f;
-        }
-        values.f_valid = true;
-
-        Serial.printf("F Sample: %d\n", (millis() - f_t1));
-        f_t1 = millis();
-    }
-
-    // Pressure sample rate: 85ms
-    if (isPressureAvailable && pressure.isSampleReady()) {
-        auto r = pressure.readSample();
-        values.p_valid = r.is_valid;
-        values.p = r.pressure;
-        values.p_reading = false;
-
-        Serial.printf("P Sample: %d\n", (millis() - p_t1));
-    }
-
-    // auto p = readPressure();
-    // auto t = readTemperature();
-
-    //auto t2 = rtd.readRTD();
-    //float t2 = rtd.temperature(RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
-
-    // Record a sample
-    unsigned long t = millis();
-    unsigned long sample_delta = (t - t_last);
-
-    // Calculate time delta between ticks for the specified time window (approximate)
-    const int32_t time_window = 30000;
-    const unsigned long t_delta = (time_window / temperatureSamples.capacity());
-    
-    if (sample_delta >= t_delta) {
-        t_last = t;
-
-        if (values.t_valid) {
-            temperatureSamples.add(values.t);
-        }
-
-        // Only update the graph for these if we are currently brewing,
-        // so we can get a frozen snapshot at the end
-        if (uiState == UiState::Brewing || uiState == UiState::SensorTest) {
-            if (values.p_valid) {
-                pressureSamples.add(values.p);
-            }
-
-            if (values.f_valid) {
-                flowSamples.add(values.f);
-
-                // Accumulate flow (mL/s -> mL)
-                // Sampling interval is ~125ms (for 240px window)
-                float sample_mL = values.f * (float)(sample_delta) * 0.001f;
-                values.f_accum += sample_mL;
-            }
-        }
-    }
-}
-*/
 
 bool isBootBtnPressed() {
     return (digitalRead(0) == LOW);
@@ -1170,10 +1103,6 @@ void loop()
 
     if (uiState != UiState::FirmwareUpdate)
     {
-        //readSensors();
-        SensorSampler::Process();
-
-
         processState();
 
         render();
