@@ -14,6 +14,7 @@
 #include "config.h"
 #include "hardware.h"
 #include "value_array.h"
+#include "SensorSampler.h"
 
 #define TFT_RGB656(r,g,b)      ((((r & 0xFF) >> 3) << 11) | (((g & 0xFF) >> 2) << 6) | ((b & 0xFF) >> 2))
 #define TFT_DARK_GOLDENROD  (TFT_RGB656(0xB8,0x86,0x0B))
@@ -30,6 +31,12 @@ constexpr float deg2rad      = 3.14159265359/180.0;
 
 Adafruit_MAX31865   rtd(MAX_CS, &tft.getSPIinstance());
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
+
+
+const int numSamples = 300;
+extern ValueArray<float, numSamples> temperatureSamples;
+extern ValueArray<float, numSamples> pressureSamples;
+extern ValueArray<float, numSamples> flowSamples;
 
 enum class UiState {
     Init,
@@ -77,18 +84,18 @@ enum class WifiConnectionStatus {
     Connected
 };
 
-struct {
-    float t;
-    bool t_valid;
+// struct {
+//     float t;
+//     bool t_valid;
 
-    int p;
-    bool p_valid;
-    bool p_reading;
+//     int p;
+//     bool p_valid;
+//     bool p_reading;
 
-    float f;
-    bool f_valid;
-    float f_accum;
-} values = {0};
+//     float f;
+//     bool f_valid;
+//     float f_accum;
+// } values = {0};
 
 struct {
     unsigned long start_brew_time;
@@ -99,9 +106,9 @@ struct {
 
 //unsigned long startBrewTime = 0;
 
-ValueArray<float, TFT_WIDTH> temperatureSamples;
-ValueArray<float, TFT_WIDTH> pressureSamples;
-ValueArray<float, TFT_WIDTH> flowSamples;
+// ValueArray<float, TFT_WIDTH> temperatureSamples;
+// ValueArray<float, TFT_WIDTH> pressureSamples;
+// ValueArray<float, TFT_WIDTH> flowSamples;
 
 bool isRtdAvailable = false;
 bool isPressureAvailable = false;
@@ -292,7 +299,7 @@ void initFlow() {
     Serial.println("Initialize Pulse Counter");
 
     pinMode(FLOW_PULSE_PIN, INPUT);
-    PulseCounter1.begin(FLOW_PULSE_PIN);
+//    PulseCounter1.begin(FLOW_PULSE_PIN);
     isFlowAvailable = true;
 }
 
@@ -509,6 +516,9 @@ void setup() {
     initPressure();
     initTemperature();
     initFlow();
+
+    SensorSampler::Initialize();
+    SensorSampler::Start();
     
 
     //uiState = UiState::Preheat;
@@ -620,7 +630,7 @@ void uiRenderGauge() {
     //float value_norm = (values.t - 15.0f) / (25.0f - 15.0f);
     float min_pressure = 1.0f; // Ambient air pressure
     float max_pressure = 12.0f;
-    float value_norm = (values.p * 0.0001f - min_pressure) / (max_pressure - min_pressure);
+    float value_norm = (SensorSampler::getPressure() - min_pressure) / (max_pressure - min_pressure);
     if (value_norm < 0.0f) value_norm = 0.0f;
     if (value_norm > 1.0f) value_norm = 1.0f;
     uint32_t min_angle = 90-30;
@@ -737,8 +747,8 @@ void uiRenderPreheat() {
     uiRenderMargin();
     // Render current temperature
     char buffer[20];
-    if (values.t_valid) {
-        snprintf(buffer, sizeof(buffer), "%.2f C", values.t);
+    if (SensorSampler::isTemperatureValid()) {
+        snprintf(buffer, sizeof(buffer), "%.2f C", SensorSampler::getTemperature());
     } else {
         snprintf(buffer, sizeof(buffer), "- C");
     }
@@ -819,9 +829,8 @@ void uiRenderBrewing() {
     {
         // Render pressure
         char buffer[20];
-        if (values.p_valid) {
-            float p_bar = values.p * 0.0001f;
-            snprintf(buffer, sizeof(buffer), "%.2f Bar", p_bar);
+        if (SensorSampler::isPressureValid()) {
+            snprintf(buffer, sizeof(buffer), "%.2f Bar", SensorSampler::getPressure());
         } else {
             snprintf(buffer, sizeof(buffer), "- Bar");
         }
@@ -843,9 +852,8 @@ void uiRenderSensorTest()
 
     {
         char buffer[20];
-        if (values.p_valid) {
-            float p_bar = values.p * 0.0001f;
-            snprintf(buffer, sizeof(buffer), "%.2f Bar", p_bar);
+        if (SensorSampler::isPressureValid()) {
+            snprintf(buffer, sizeof(buffer), "%.2f Bar", SensorSampler::getPressure());
         } else {
             snprintf(buffer, sizeof(buffer), "- Bar");
         }
@@ -857,8 +865,8 @@ void uiRenderSensorTest()
 
     {
         char buffer[20];
-        if (values.f_valid) {
-            snprintf(buffer, sizeof(buffer), "%.1f /s", values.f);
+        if (SensorSampler::isFlowRateValid()) {
+            snprintf(buffer, sizeof(buffer), "%.1f /s", SensorSampler::getFlowRate());
         } else {
             snprintf(buffer, sizeof(buffer), "- /s");
         }
@@ -871,8 +879,8 @@ void uiRenderSensorTest()
 
     {
         char buffer[20];
-        if (values.f_valid) {
-            snprintf(buffer, sizeof(buffer), "%.1f mL", values.f_accum);
+        if (SensorSampler::isFlowRateValid()) {
+            snprintf(buffer, sizeof(buffer), "%.1f mL", SensorSampler::getTotalFlowVolume());
         } else {
             snprintf(buffer, sizeof(buffer), "- mL");
         }
@@ -884,8 +892,8 @@ void uiRenderSensorTest()
 
     {
         char buffer[20];
-        if (values.t_valid) {
-            snprintf(buffer, sizeof(buffer), "%.1f C", values.t);
+        if (SensorSampler::isTemperatureValid()) {
+            snprintf(buffer, sizeof(buffer), "%.1f C", SensorSampler::getTemperature());
         } else {
             snprintf(buffer, sizeof(buffer), "- C");
         }
@@ -894,12 +902,19 @@ void uiRenderSensorTest()
         // Place below the status label
         uiRenderLabelCentered(gfx_right, buffer, 30, TFT_RED);
     }
+
+    uiRenderGauge();
 }
 
+/*
 void readSensors() {
+    static unsigned long p_t1 = 0;
+    static unsigned long t_t1 = 0;
+    static unsigned long f_t1 = 0;
     if (isPressureAvailable && !values.p_reading)
     {
         pressure.startSample();
+        p_t1 = millis();
         values.p_reading = true;
 
         // while (!pressure.isSampleReady())
@@ -911,11 +926,15 @@ void readSensors() {
     // while (digitalRead(MAX_RDY) != LOW)
     //     continue;
 
+    // RTD sample rate: 85ms
     if (isRtdAvailable && rtd.isSampleReady()) {// isMaxSampleReady()) {
         auto raw_rtd = rtd.readSample();
         //Serial.printf("T: %d\n", raw_rtd);
         values.t = rtd.calculateTemperature(raw_rtd, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
         values.t_valid = (values.t > RTD_MIN_TEMP && values.t < RTD_MAX_TEMP);
+
+        Serial.printf("T Sample: %d\n", (millis() - t_t1));
+        t_t1 = millis();
     }
 
     //while (!FreqCountESP.available())
@@ -923,6 +942,7 @@ void readSensors() {
     //     continue;
     // auto f = PulseCounter1.getFrequency();
 
+    // Pulse counter sample rate: 250ms
     if (isFlowAvailable && PulseCounter1.isSampleReady()) {
         // Value typically ranges from 40-270 Hz
         float f = PulseCounter1.getFrequency();
@@ -935,13 +955,19 @@ void readSensors() {
             values.f = 0.0f;
         }
         values.f_valid = true;
+
+        Serial.printf("F Sample: %d\n", (millis() - f_t1));
+        f_t1 = millis();
     }
 
+    // Pressure sample rate: 85ms
     if (isPressureAvailable && pressure.isSampleReady()) {
         auto r = pressure.readSample();
         values.p_valid = r.is_valid;
         values.p = r.pressure;
         values.p_reading = false;
+
+        Serial.printf("P Sample: %d\n", (millis() - p_t1));
     }
 
     // auto p = readPressure();
@@ -983,6 +1009,7 @@ void readSensors() {
         }
     }
 }
+*/
 
 bool isBootBtnPressed() {
     return (digitalRead(0) == LOW);
@@ -1028,7 +1055,7 @@ void processState()
 
     if (uiState == UiState::Preheat) {
         // Device is ready once temperature rises above the configured threshold
-        if (values.t_valid && (values.t > CONFIG_PREHEAT_TEMPERATURE_C)) {
+        if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() > CONFIG_PREHEAT_TEMPERATURE_C)) {
             uiState = UiState::Ready;
             return;
         }
@@ -1056,7 +1083,7 @@ void processState()
         brew.end_brew_time = 0;
 
         // Reset flow accumulation
-        values.f_accum = 0.0f;
+        SensorSampler::resetFlowCounter();
         return;
     }
 
@@ -1135,7 +1162,9 @@ void loop()
 
     if (uiState != UiState::FirmwareUpdate)
     {
-        readSensors();
+        //readSensors();
+        SensorSampler::Process();
+
 
         processState();
 

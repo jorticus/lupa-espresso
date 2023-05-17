@@ -110,8 +110,8 @@ bool PulseCounter::begin(int pin, int sampleWindowMs) {
     setSlowMode(true);
 
     const int timerIdx = 0;
-    const int timerDivier = 80;
-    _timer = timerBegin(timerIdx, timerDivier, true);
+    const int timerDivider = 80;
+    _timer = timerBegin(timerIdx, timerDivider, true);
     timerAttachInterrupt(_timer, &PulseCounter::timerIsr, true);
     timerAlarmWrite(_timer, sampleWindowMs*1000, true);
 
@@ -148,7 +148,7 @@ float PulseCounter::getFrequency() {
     float value = 0.0f;
     if (_slowMode) {
         if (_timeCount > 0) {
-            Serial.printf("slow: %d/%d\n", _timeDelta, _timeCount);
+            //Serial.printf("slow: %d/%d\n", _timeDelta, _timeCount);
             // usecs/tick -> ticks/second
             value = 1000000.0f / (float)(_timeDelta / _timeCount);
 
@@ -159,9 +159,9 @@ float PulseCounter::getFrequency() {
     else {
         // ticks/timeInterval -> ticks/second
         value = (int)_count * 1000 / _sampleWindowMs;
-        Serial.printf("fast: %d\n", _count);
+        //Serial.printf("fast: %d\n", _count);
     }
 
-    Serial.printf("f: %.1f\n", value);
+    //Serial.printf("f: %.1f\n", value);
     return value;
 }
