@@ -1102,6 +1102,8 @@ void render()
 {
     // Drawing
     {
+        auto t1 = millis();
+
         gfx_left.fillSprite(TFT_BLACK);
         gfx_right.fillSprite(TFT_BLACK);
 
@@ -1152,7 +1154,13 @@ void render()
         }
 #endif
 
+        auto t2 = millis();
+
         tftUpdateDisplay();
+
+        auto t3 = millis();
+
+        //Serial.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
     }
 }
 
