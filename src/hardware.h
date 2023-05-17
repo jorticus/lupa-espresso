@@ -18,7 +18,8 @@
 // Pull-up
 // Flow rate 0.75-1L/min
 // https://www.eptsensor.com/flow-sensor/hall-flow-sensor/fm-hl3012-flow-meter-hall-sensor.html
-#define FLOW_PULSE_PIN 39
+#define FLOW_PULSE_PIN 15
+// Note: D39 has stability issues, do not use for this.
 
 // Boiler tank full sense
 // Used for auto-fill logic

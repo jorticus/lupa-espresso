@@ -15,7 +15,9 @@ const unsigned long FAST_TICK_COUNT_THRESHOLD = 550;
 
 /// @brief Maximum time between pulses that will be recognized.
 /// If tick exceeds this length, value will be 0.
-const unsigned long MAX_TICK_DELTA_USEC = 3000000;
+const unsigned long MAX_TICK_DELTA_USEC = 500000;
+
+const unsigned long MIN_TICK_DELTA_USEC = 100;
 
 PulseCounter PulseCounter1;
 
@@ -47,6 +49,7 @@ void IRAM_ATTR PulseCounter::onTimer() {
     this->_isSampleReady = true;
 
     if (!_slowMode && (count < SLOW_TICK_COUNT_THRESHOLD)) {
+        Serial.printf("count %d below slow threshold\n", count);
         setSlowMode(true);
     }
 
@@ -58,15 +61,18 @@ void IRAM_ATTR PulseCounter::onPinChange() {
     pcnt_get_counter_value(PCNT_UNIT_0, &count);
 
     if (_slowMode && (count > FAST_TICK_COUNT_THRESHOLD)) {
+        Serial.printf("count %d above fast threshold\n", count);
         setSlowMode(false);
         return;
     }
+
+    pcnt_counter_clear(PCNT_UNIT_0);
 
     unsigned long t = esp_timer_get_time();
     unsigned long delta = t - _time;
     _time = t;
 
-    if (delta < MAX_TICK_DELTA_USEC) {
+    if (delta > MIN_TICK_DELTA_USEC && delta < MAX_TICK_DELTA_USEC) {
         _timeDelta += delta;
         _timeCount++;
 
@@ -116,10 +122,15 @@ bool PulseCounter::begin(int pin, int sampleWindowMs) {
 
 void PulseCounter::setSlowMode(bool slow) {
     if (slow) {
+        _timeDelta = 0;
+        _timeCount = 0;
+        
         Serial.println("Slow mode");
         __attachInterruptFunctionalArg(_interruptPin, &PulseCounter::pinChangeIsr, this, CHANGE, false);
     }
     else {
+        _count = 0;
+
         Serial.println("Fast mode");
         detachInterrupt(_interruptPin);
     }
@@ -137,6 +148,7 @@ float PulseCounter::getFrequency() {
     float value = 0.0f;
     if (_slowMode) {
         if (_timeCount > 0) {
+            Serial.printf("slow: %d/%d\n", _timeDelta, _timeCount);
             // usecs/tick -> ticks/second
             value = 1000000.0f / (float)(_timeDelta / _timeCount);
 
@@ -147,7 +159,9 @@ float PulseCounter::getFrequency() {
     else {
         // ticks/timeInterval -> ticks/second
         value = (int)_count * 1000 / _sampleWindowMs;
+        Serial.printf("fast: %d\n", _count);
     }
 
+    Serial.printf("f: %.1f\n", value);
     return value;
 }

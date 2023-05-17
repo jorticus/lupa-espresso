@@ -620,7 +620,7 @@ void uiRenderGauge() {
     //float value_norm = (values.t - 15.0f) / (25.0f - 15.0f);
     float min_pressure = 1.0f; // Ambient air pressure
     float max_pressure = 12.0f;
-    float value_norm = (values.p * 0.001f - min_pressure) / (max_pressure - min_pressure);
+    float value_norm = (values.p * 0.0001f - min_pressure) / (max_pressure - min_pressure);
     if (value_norm < 0.0f) value_norm = 0.0f;
     if (value_norm > 1.0f) value_norm = 1.0f;
     uint32_t min_angle = 90-30;
@@ -685,13 +685,14 @@ void uiRenderBrewGraph(TFT_eSprite& gfx) {
 
     {
         float min_value = 1000.0f;
-        float max_value = 2000.0f;
+        float max_value = 12000.0f;
 
         // The sample array may be greater than the width.
         // Offset into the array so that the last sample drawn is the most recent available.
         int start = pressureSamples.size() - w;
         if (start < 0) start = 0;
 
+        x = margin;
         for (int i = start; i < pressureSamples.size(); i++) {
             auto sample = pressureSamples[i];
 
@@ -714,6 +715,7 @@ void uiRenderBrewGraph(TFT_eSprite& gfx) {
         int start = flowSamples.size() - w;
         if (start < 0) start = 0;
 
+        x = margin;
         for (int i = start; i < flowSamples.size(); i++) {
             auto sample = flowSamples[i];
 
@@ -817,7 +819,12 @@ void uiRenderBrewing() {
     {
         // Render pressure
         char buffer[20];
-        snprintf(buffer, sizeof(buffer), "%d", values.p);
+        if (values.p_valid) {
+            float p_bar = values.p * 0.0001f;
+            snprintf(buffer, sizeof(buffer), "%.2f Bar", p_bar);
+        } else {
+            snprintf(buffer, sizeof(buffer), "- Bar");
+        }
         buffer[sizeof(buffer)-1] = '\0';
 
         // Place below the status label
@@ -837,9 +844,10 @@ void uiRenderSensorTest()
     {
         char buffer[20];
         if (values.p_valid) {
-            snprintf(buffer, sizeof(buffer), "%d mBar", values.p);
+            float p_bar = values.p * 0.0001f;
+            snprintf(buffer, sizeof(buffer), "%.2f Bar", p_bar);
         } else {
-            snprintf(buffer, sizeof(buffer), "- mBar");
+            snprintf(buffer, sizeof(buffer), "- Bar");
         }
         buffer[sizeof(buffer)-1] = '\0';
 
@@ -917,7 +925,15 @@ void readSensors() {
 
     if (isFlowAvailable && PulseCounter1.isSampleReady()) {
         // Value typically ranges from 40-270 Hz
-        values.f = PulseCounter1.getFrequency();
+        float f = PulseCounter1.getFrequency();
+        // Remove outliers (eg, from noise)
+        if (f > 0.1f && f < 300.0f) {
+            const float correction = 0.155f;
+            values.f = f * correction;
+        }
+        else {
+            values.f = 0.0f;
+        }
         values.f_valid = true;
     }
 
@@ -959,8 +975,10 @@ void readSensors() {
             if (values.f_valid) {
                 flowSamples.add(values.f);
 
-                // Accumulate flow
-                values.f_accum += values.f;
+                // Accumulate flow (mL/s -> mL)
+                // Sampling interval is ~125ms (for 240px window)
+                float sample_mL = values.f * (float)(sample_delta) * 0.001f;
+                values.f_accum += sample_mL;
             }
         }
     }
