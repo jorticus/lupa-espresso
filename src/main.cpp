@@ -783,20 +783,58 @@ void uiRenderBrewGraph(TFT_eSprite& gfx, bool freeze = false) {
     }
 }
 
+float calculateEstimatedGroupheadTemp(float t) {
+    if (t < 90.0f) {
+        // Correction doesn't work in this range, 
+        // switch to approximate linear correction
+        return t * 0.8008f;
+    }
+    else {
+        // Polynomial correction based on real measurements between
+        // boiler and grouphead temperature.
+        // NOTE: Real temperatures fluctuate a lot, so this is 
+        // only an approximation.
+        //return (t*t*0.0921f) - (t*21.614f) + 1363.7f;
+        // =(D40*D40*0.0163)-(D40*3.2351)+250
+        return (t*t*0.0163f) - (t*3.2351f) + 250.0f;
+    }
+}
+
 void uiRenderTemperatureLeft()
 {
     uiRenderTemperatureGraph(gfx_left);
 
-    // Render current temperature
-    char buffer[20];
-    if (SensorSampler::isTemperatureValid()) {
-        snprintf(buffer, sizeof(buffer), "%.2f C", SensorSampler::getTemperature());
-    } else {
-        snprintf(buffer, sizeof(buffer), "- C");
-    }
-    buffer[sizeof(buffer)-1] = '\0';
+    float t_boiler = SensorSampler::getTemperature();
 
-    uiRenderLabelCentered(gfx_left, buffer, 0);
+    // Render current temperature
+    {
+        char buffer[20];
+        if (SensorSampler::isTemperatureValid() && (t_boiler > 20.0f)) {
+            snprintf(buffer, sizeof(buffer), "%.2f C", t_boiler);
+        } else {
+            snprintf(buffer, sizeof(buffer), "- C");
+        }
+        buffer[sizeof(buffer)-1] = '\0';
+
+        uiRenderLabelCentered(gfx_left, buffer, -15);
+    }
+
+    // Estimated grouphead temperature
+    {
+        char buffer[20];
+        if (SensorSampler::isTemperatureValid() && (t_boiler > 100.0f)) {
+            float t = calculateEstimatedGroupheadTemp(t_boiler);
+            // NOTE: No decimal places as the estimation is only accurate to
+            // within a few degrees C anyway, don't want to give the illusion
+            // of accuracy.
+            snprintf(buffer, sizeof(buffer), "%.0f C", t);
+        } else {
+            snprintf(buffer, sizeof(buffer), "- C");
+        }
+        buffer[sizeof(buffer)-1] = '\0';
+
+        uiRenderLabelCentered(gfx_left, buffer, 15);
+    }
 
     uiRenderTemperatureGauge(gfx_left);
 }
@@ -824,7 +862,6 @@ void uiRenderReady()
 
         // Display snapshot of last brew graph
         uiRenderBrewGraph(gfx_right, true);
-        uiRenderMargin();
 
         float brewTimeSec = (brew.end_brew_time - brew.start_brew_time) / 1000.0f;
         char buffer[20];
@@ -838,10 +875,10 @@ void uiRenderReady()
         //uiRenderLabelCentered(gfx_right, "READY", 0);
         
         uiRenderBrewGraph(gfx_right);
-        uiRenderPressureGauge(gfx_right);
-        uiRenderFlowGauge(gfx_right);
     }
 
+    uiRenderPressureGauge(gfx_right);
+    uiRenderFlowGauge(gfx_right);
 
     {
         // Render pressure label

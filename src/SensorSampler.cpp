@@ -118,8 +118,16 @@ static void onSensorTimer(TimerHandle_t timer) {
     // );
 }
 
+static float calculateRtdTemperature(float rtd_raw) {
+    float t = rtd.calculateTemperature(rtd_raw, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+    
+    // Correction factor for boiler RTD using real-life measurements
+    return (t * 1.024f) - 1.38f;
+}
+
 static void onTemperatureTimer(TimerHandle_t timer) {
-    static int divider = 0;
+    static int divider10 = 0;
+    static int divider2 = 0;
 
     auto t1 = millis();
 
@@ -129,7 +137,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     if (raw != 0) {
         filter2.add(raw);
         float raw_filtered = filter2.get();
-        auto temperature = rtd.calculateTemperature(raw_filtered, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+        auto temperature = calculateRtdTemperature(raw_filtered);
         if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
             value_temperature = temperature;
             is_valid_temperature = true;
@@ -157,12 +165,15 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     }
 
     // 100ms per tick
-    pressureSamples.add(value_pressure);
-    flowSamples.add(value_flow_rate);
+    if (divider2++ == 2) {
+        divider2 = 0;
+        pressureSamples.add(value_pressure);
+        flowSamples.add(value_flow_rate);
+    }
 
     // 1 sec per tick
-    if (divider++ == 10) {
-        divider = 0;
+    if (divider10++ == 10) {
+        divider10 = 0;
         temperatureSamples.add(value_temperature);
     }
 
