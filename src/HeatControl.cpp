@@ -1,19 +1,24 @@
 #include <Arduino.h>
 #include <PID_v1.h>
 #include "SensorSampler.h"
+#include "HeatControl.h"
+#include "Machine.h"
 #include "hardware.h"
+#include "config.h"
 
-static double input = 0.0;
-static double output = 0.0;
-static double setpoint = 115.0;
+static double pid_input = 0.0;
+static double pid_output = 0.0;
+static double pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
 
 // Defaults from smartcoffee project,
 // seem to work okay with my machine.
+// https://github.com/rancilio-pid/clevercoffee/blob/4c8ce515c5360aac4235b064c044bd739356de09/src/defaults.h
 static const double Kp = 45.0;
 static const double Ki = 45.0 / 130.0; // Ki = Kp / Tn
 static const double Kd = 0;
 
-static PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+// TODO: Internally this uses doubles, should really use floats
+static PID pid(&pid_input, &pid_output, &pid_setpoint, Kp, Ki, Kd, DIRECT);
 
 static unsigned long t_start = 0;
 static unsigned long t_width = 0;
@@ -23,16 +28,11 @@ const float PID_OUTPUT_MIN = 0.0;
 const unsigned long HEATER_MIN_PERIOD = 100;
 const unsigned long HEATER_MAX_PERIOD = 5000;
 const unsigned long HEATER_PERIOD = 5000;
-const float MAX_BOILER_TEMPERATURE = 123.0f;
 
-bool g_isHeaterOn = false;
-float g_heatPower = 0.0;
+const float MAX_BOILER_TEMPERATURE = CONFIG_MAX_BOILER_TEMPERATURE_C;
 
-// main.cpp
-bool isWaterTankLow();
-void failsafe();
+namespace HeatControl {
 
-/// @brief Initialize control loop parameters
 void initControlLoop()
 {
     pid.SetOutputLimits(PID_OUTPUT_MIN, PID_OUTPUT_MAX);
@@ -50,29 +50,6 @@ void initControlLoop()
     // so the integral term will work against us.
 }
 
-/// @brief Set heater power immediately
-/// @param en Heater power on/off
-void setHeater(bool en) {
-    static bool prev_value = LOW;
-
-    if (en) {
-        if (en != prev_value) {
-            Serial.println("HEAT: ON");
-        }
-        digitalWrite(PIN_OUT_HEAT, HIGH);
-    }
-    else {
-        if (en != prev_value) {
-            Serial.println("HEAT: OFF");
-        }
-        digitalWrite(PIN_OUT_HEAT, LOW);
-    }
-
-    prev_value = en;
-    g_isHeaterOn = en;
-}
-
-/// @brief Calculate next tick of the control loop
 void processControlLoop()
 {
     // TODO: Watchdog for safety.
@@ -84,40 +61,39 @@ void processControlLoop()
     // 2. Regulate : PID control loop to keep within target
     // 3. Steam : Heat 100% while pressure is low to maintain steam
 
-    if (!SensorSampler::isTemperatureValid() || isWaterTankLow()) {
+    if (!SensorSampler::isTemperatureValid() || Machine::isWaterTankLow()) {
         // Turn off heat/pump/etc if we don't have a temperature reading
-        failsafe();
-        g_heatPower = 0.0f;
+        Machine::failsafe();
     }
     else {
-        input = SensorSampler::getTemperature();
+        pid_input = SensorSampler::getTemperature();
 
-        if (input > MAX_BOILER_TEMPERATURE) {
-            setHeater(false);
-            g_heatPower = 0.0f;
+        if (pid_input > MAX_BOILER_TEMPERATURE) {
+            Machine::setHeat(false);
+            Machine::setHeatPower(0.0);
             return;
         }
 
-        // Not yet near the setpoint, 100% duty until we get close
-        if (input < (setpoint - 10.0)) {
-            setHeater(true);
-            g_heatPower = 1.0f;
+        // Not yet near the pid_setpoint, 100% duty until we get close
+        if (pid_input < (pid_setpoint - 10.0)) {
+            Machine::setHeat(true);
+            Machine::setHeatPower(1.0);
             return;
         }
         else {
 
             if (pid.Compute()) {
-                Serial.printf("PID Target: %.1f, %.1f, %.1f\n", input, output, setpoint);
-                if (output > 0.0) {
-                    g_heatPower = output * 0.01f;
-                    t_width = (unsigned long)(output * (double)HEATER_PERIOD * 0.01);
+                Serial.printf("PID Target: %.1f, %.1f, %.1f\n", pid_input, pid_output, pid_setpoint);
+                if (pid_output > 0.0) {
+                    Machine::setHeatPower(pid_output * 0.01f);
+                    t_width = (unsigned long)(pid_output * (double)HEATER_PERIOD * 0.01);
 
                     // if (t_width > (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
                     //     t_width = (HEATER_PERIOD - HEATER_MIN_PERIOD;
                     // }
                 }
                 else {
-                    g_heatPower = 0.0;
+                    Machine::setHeatPower(0.0);
                 }
             }
 
@@ -129,7 +105,7 @@ void processControlLoop()
                 if ((t_width > HEATER_MIN_PERIOD) && (t_start == 0)) {
                     t_start = t_now;
                     Serial.printf("Heat: %d/%d\n", t_width, HEATER_PERIOD);
-                    setHeater(true);
+                    Machine::setHeat(true);
                 }
             }
 
@@ -137,7 +113,7 @@ void processControlLoop()
             if ((t_start > 0) && ((t_now - t_start) > t_width)) {
                 // Keep heater on if at 100% duty
                 if (t_width < (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
-                    setHeater(false);
+                    Machine::setHeat(false);
                 }
 
                 t_width = 0;
@@ -147,4 +123,6 @@ void processControlLoop()
         }
 
     }
+}
+
 }

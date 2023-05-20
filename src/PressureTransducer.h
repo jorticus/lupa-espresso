@@ -8,6 +8,7 @@ typedef struct {
     int temperature;
 } pressure_sample_t;
 
+/// @brief Interface for Xidibei I2C pressure transducer
 class PressureTransducer
 {
 public:
@@ -15,10 +16,19 @@ public:
         : full_scale_pressure(full_scale_pressure), i2c_addr(i2c_addr)
     { }
 
+    /// @brief Detect sensor on bus
+    /// @return false if no sensor was found
     bool begin();
 
+    /// @brief Instruct sensor to begin sampling
+    /// @return false if I2C transaction error
     bool startSample();
+
+    /// @brief A sample is ready for collection
     bool isSampleReady();
+
+    /// @brief Read the latest sample from the sensor
+    /// @return A structure containing temperature, pressure, and whether the sample is valid
     pressure_sample_t readSample();
 
 private:

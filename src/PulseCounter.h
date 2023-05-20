@@ -1,15 +1,22 @@
 #pragma once
 
+/// @brief Interface for counting pulses using ESP32 peripherals
 class PulseCounter
 {
 public:
     PulseCounter()
     { }
 
+    /// @brief Set up pulse counter
+    /// @param pin The pin to count pulses on
+    /// @param sampleWindowMs Window to measure pulses in
+    /// @return false if there was an error setting up the pulse counter
     bool begin(int pin, int sampleWindowMs = 200);
 
+    /// @brief A sample is ready for collection
     bool isSampleReady();
 
+    /// @brief Latest pulse counter reading
     float getFrequency();
 
 protected:

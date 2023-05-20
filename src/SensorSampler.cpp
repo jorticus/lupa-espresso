@@ -17,6 +17,10 @@ ValueArray<float, numSamples> temperatureSamples;
 ValueArray<float, numSamples> pressureSamples;
 ValueArray<float, numSamples> flowSamples;
 
+bool isRtdAvailable = false;
+bool isPressureAvailable = false;
+bool isFlowAvailable = false;
+
 // https://wirelesslibrary.labs.b-com.com/FIRfilterdesigner/#/#result-container
 static float filter_taps_10hz[] = {
     // 0.5Hz @ 10Hz sample
@@ -91,6 +95,10 @@ const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
 static TimerHandle_t timer;
 static TimerHandle_t timer2;
+
+bool isMaxSampleReady() {
+    return (digitalRead(MAX_RDY) == LOW);
+}
 
 /// @brief Sensor sampling timer, records sensor readings at a regular interval
 /// @param timer FreeRTOS timer handle
@@ -199,7 +207,84 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     //Serial.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
 }
 
-void SensorSampler::Initialize() {
+
+bool initPressure() {
+    Serial.println("Initialize Pressure");
+    if (!pressure.begin()) {
+        Serial.println("ERROR: No response from pressure transducer");
+        return false;
+    }
+    else {
+        return true;
+    }
+}
+
+bool initTemperature() {
+    Serial.println("Initialize MAX31865");
+
+    pinMode(MAX_RDY, INPUT);
+
+    rtd.begin(MAX31865_3WIRE);
+    rtd.enableBias(true);
+    rtd.enable50Hz(true);
+    
+    //Serial.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
+    //Serial.println("ERROR: No response from MAX");
+
+    rtd.readRTD();
+    auto fault = rtd.readFault();
+    if (fault) {
+        Serial.print("Fault 0x"); Serial.println(fault, HEX);
+        if (fault & MAX31865_FAULT_HIGHTHRESH) {
+            Serial.println("RTD High Threshold"); 
+        }
+        if (fault & MAX31865_FAULT_LOWTHRESH) {
+            Serial.println("RTD Low Threshold"); 
+        }
+        if (fault & MAX31865_FAULT_REFINLOW) {
+            Serial.println("REFIN- > 0.85 x Bias"); 
+        }
+        if (fault & MAX31865_FAULT_REFINHIGH) {
+            Serial.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
+        }
+        if (fault & MAX31865_FAULT_RTDINLOW) {
+            Serial.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
+        }
+        if (fault & MAX31865_FAULT_OVUV) {
+            Serial.println("Under/Over voltage"); 
+        }
+    }
+    else {
+        rtd.autoConvert(true);
+
+        // Wait for a sample to come in
+        auto t1 = millis();
+        while (((millis() - t1) < 1000) && (!rtd.isSampleReady()))
+            continue;
+        
+        if (!rtd.isSampleReady()) {
+            Serial.println("Error: No sample");
+        }
+        else if (rtd.readSample() == 0) {
+            Serial.println("Error: Sample is zero");
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool initFlow() {
+    Serial.println("Initialize Pulse Counter");
+
+    pinMode(FLOW_PULSE_PIN, INPUT);
+//    PulseCounter1.begin(FLOW_PULSE_PIN);
+    return true;
+}
+
+
+bool SensorSampler::initialize() {
     Serial.println("Initialize Sensor Sampler");
 
     timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdTRUE, nullptr, onTemperatureTimer);
@@ -211,9 +296,14 @@ void SensorSampler::Initialize() {
         Serial.println("ERROR: Could not allocate SensorSampler timer");
     }
 
+    bool isTemperatureAvailable = initTemperature();
+    bool isPressureAvailable = initPressure();
+    bool isFlowAvailable = initFlow();
+
+    return (isTemperatureAvailable && isPressureAvailable && isFlowAvailable);
 }
 
-void SensorSampler::Start() {
+void SensorSampler::start() {
     xTimerStart(timer2, 0);
     xTimerStart(timer, 0);
 
@@ -222,14 +312,14 @@ void SensorSampler::Start() {
     PulseCounter1.begin(FLOW_PULSE_PIN, sampleRateMs);
 }
 
-void SensorSampler::Stop() {
+void SensorSampler::stop() {
     xTimerStop(timer, 0);
     xTimerStop(timer2, 0);
 
     rtd.autoConvert(false);
 }
 
-void SensorSampler::Process() {
+void SensorSampler::process() {
 
 }
 
