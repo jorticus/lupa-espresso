@@ -1141,28 +1141,6 @@ void render()
 
         uiDrawStatusCircle(gfx_right);
 
-#if false
-
-
-        gfx.setCursor(30, 80);
-        //lcd.printf("P: %.2f", p * 0.001f);
-        if (values.p_valid) {
-            gfx.printf("P: %.2f", values.p * 0.001f);
-        } else {
-            gfx.printf("P: -");
-        }
-
-        gfx.setCursor(30, 110);
-        gfx.printf("F: %.2f", values.f);
-
-        gfx.setCursor(30, 140);
-        if (values.t_valid) {
-            gfx.printf("T: %.2fC", values.t);
-        } else {
-            gfx.printf("T: -");
-        }
-#endif
-
         auto t2 = millis();
 
         tftUpdateDisplay();

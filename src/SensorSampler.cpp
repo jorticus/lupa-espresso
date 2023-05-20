@@ -46,8 +46,10 @@ public:
 
     void add(float sample) {
         samples[last_index++] = sample;
-        if (last_index == N_TAPS)
+        if (last_index == N_TAPS) {
             last_index = 0;
+            ready = true;
+        }
     }
 
     float get() const {
@@ -58,6 +60,10 @@ public:
             acc += samples[index] * taps[i];
         };
         return acc;
+    }
+
+    bool isReady() const {
+        return ready;
     }
 
 private:
@@ -99,8 +105,10 @@ static void onSensorTimer(TimerHandle_t timer) {
     else {
         filter1.add(0);
     }
-    value_pressure = filter1.get() * 0.0001f;
-    is_valid_pressure = sample.is_valid;
+    if (filter1.isReady()) {
+        value_pressure = filter1.get() * 0.0001f;
+        is_valid_pressure = sample.is_valid;
+    }
     pressure.startSample();
 
     auto t2 = millis();
@@ -133,20 +141,22 @@ static void onTemperatureTimer(TimerHandle_t timer) {
 
     // MAX chip is configured for an automatic 60Hz sample rate.
     // Since we're only sampling at ~10Hz, we should always have a sample available.
-    auto raw = rtd.readSample();
-    if (raw != 0) {
-        filter2.add(raw);
-        float raw_filtered = filter2.get();
-        auto temperature = calculateRtdTemperature(raw_filtered);
-        if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
-            value_temperature = temperature;
-            is_valid_temperature = true;
+    if (rtd.isSampleReady()) {
+        auto raw = rtd.readSample();
+        if (raw != 0) {
+            filter2.add(raw);
+            if (filter2.isReady()) {
+                float raw_filtered = filter2.get();
+                auto temperature = calculateRtdTemperature(raw_filtered);
+                if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+                    value_temperature = temperature;
+                    is_valid_temperature = true;
+                }
+                else {
+                    is_valid_temperature = false;
+                }
+            }
         }
-        else {
-            is_valid_temperature = false;
-        }
-    } else {
-        is_valid_temperature = false;
     }
 
     
@@ -174,7 +184,9 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     // 1 sec per tick
     if (divider10++ == 10) {
         divider10 = 0;
-        temperatureSamples.add(value_temperature);
+        if (filter2.isReady()) {
+            temperatureSamples.add(value_temperature);
+        }
     }
 
     auto t2 = millis();
