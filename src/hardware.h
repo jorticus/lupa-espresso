@@ -31,7 +31,7 @@
 //
 
 // Boiler heater element output (PWM)
-#define PIN_OUT_HEAT 16
+#define PIN_OUT_HEAT 5
 
 // Pump output (PWM)
 #define PIN_OUT_PUMP 17

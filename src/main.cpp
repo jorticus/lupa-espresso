@@ -39,6 +39,9 @@ extern ValueArray<float, numSamples> temperatureSamples;
 extern ValueArray<float, numSamples> pressureSamples;
 extern ValueArray<float, numSamples> flowSamples;
 
+extern bool g_isHeaterOn;
+extern float g_heatPower;
+
 ValueArray<float, numSamples> pressureSamplesFrozen;
 ValueArray<float, numSamples> flowSamplesFrozen;
 
@@ -119,6 +122,9 @@ bool isPressureAvailable = false;
 bool isFlowAvailable = false;
 
 int counter = 0;
+
+void initControlLoop();
+void processControlLoop();
 
 void uiDrawStatusCircle(TFT_eSprite& gfx);
 void uiRenderLabelCentered(TFT_eSprite& gfx, const char* s, int16_t y, uint16_t color);
@@ -528,6 +534,8 @@ void setup() {
     initTemperature();
     initFlow();
 
+    initControlLoop();
+
     SensorSampler::Initialize();
     SensorSampler::Start();
     
@@ -564,12 +572,12 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
 
         case UiState::Preheat:
         {
-            status_str = "PREHEATING";
+            status_str = "WARMING UP";
             color = TFT_ORANGERED;
 
             // Pulse animation
             
-            ring_w += 5 + (sinf((t / 10.0f) * deg2rad + PI) * 5.0f);
+            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
 
             break;
         }
@@ -598,7 +606,7 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
             }
 
             // Flash animation
-            float f = sinf((t / 2.0f) * deg2rad + PI) * 0.5f + 0.5f;
+            float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
             int16_t c = f*f*255.0f;
             color = TFT_RGB656(c, 0, 0);
             break;
@@ -630,6 +638,18 @@ void uiDrawStatusCircle(TFT_eSprite& gfx) {
         int16_t th = 14;
         gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
         gfx.print(status_str);
+    }
+}
+
+void uiRenderStatusIcons(TFT_eSprite& gfx) {
+    const int32_t r = (TFT_WIDTH/2) - 40;
+    const float angle = 180 - 45;
+    int32_t x = (TFT_WIDTH/2)  + (r * -sinf(angle * deg2rad));
+    int32_t y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
+
+    if (g_isHeaterOn) {
+        // TODO: Replace with heat icon
+        gfx.fillCircle(x, y, 5, TFT_ORANGERED);
     }
 }
 
@@ -687,6 +707,10 @@ void uiRenderTemperatureGauge(TFT_eSprite& gfx) {
     float max_temp = getTemperatureMaxRange();
     float value_norm = (temperature - min_temp) / (max_temp - min_temp);
     uiRenderGauge(gfx, value_norm, TFT_RED);
+}
+
+void uiRenderHeaterPowerGauge(TFT_eSprite& gfx) {
+    uiRenderGauge(gfx, g_heatPower, TFT_YELLOW, 15);
 }
 
 void uiRenderFlowGauge(TFT_eSprite& gfx) {
@@ -837,6 +861,8 @@ void uiRenderTemperatureLeft()
     }
 
     uiRenderTemperatureGauge(gfx_left);
+    uiRenderHeaterPowerGauge(gfx_left);
+    uiRenderStatusIcons(gfx_left);
 }
 
 void uiRenderPreheat()
@@ -1158,6 +1184,8 @@ void loop()
     if (uiState != UiState::FirmwareUpdate)
     {
         processState();
+
+        processControlLoop();
 
         render();
     }
