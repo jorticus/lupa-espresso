@@ -2,6 +2,7 @@
 #include "Machine.h"
 #include "SensorSampler.h"
 #include "config.h"
+#include "HeatControl.h"
 
 namespace UI {
 
@@ -11,6 +12,10 @@ BrewStats brewStats = {0};
 
 const float preheat_temperature = CONFIG_BOILER_PREHEAT_TEMPERATURE_C;
 
+const unsigned long lever_debounce_interval_ms = 500;
+static unsigned long t_idle_start = 0;
+static unsigned long t_steam_start = 0;
+
 static const char* UiState_Str[] = {
     "Init",
     "Pre-Heat",
@@ -19,7 +24,8 @@ static const char* UiState_Str[] = {
     "Brewing",
     "Post-Brew",
     "Sensor Test",
-    "Firmware Update"
+    "Firmware Update",
+    "Sleep",
 };
 
 void setState(UiState state) {
@@ -43,6 +49,26 @@ static void printState(UiState uiState) {
     }
 }
 
+void resetIdleTimer() {
+    t_idle_start = millis();
+}
+
+void onStateChanged() {
+
+    // Detect and handle sleep state
+    switch (uiState) {
+        case UiState::Sleep:
+            Display::setBrightness(CONFIG_IDLE_BRIGHTNESS);
+            HeatControl::setMode(HeatControl::Mode::Sleep);
+            break;
+        default:
+            Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
+            if (HeatControl::getMode() == HeatControl::Mode::Sleep) {
+                HeatControl::setMode(HeatControl::Mode::Brew);
+            }
+            break;
+    }
+}
 
 void processState()
 {
@@ -50,7 +76,10 @@ void processState()
     if (uiState != _lastUiState) {
         _lastUiState = uiState;
         printState(uiState);
+        onStateChanged();
     }
+
+    auto t_now = millis();
 
     // NOTE: Process faults first.
 
@@ -75,6 +104,7 @@ void processState()
         // Device is ready once temperature rises above the configured threshold
         if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() > preheat_temperature)) {
             uiState = UiState::Ready;
+            resetIdleTimer();
             return;
         }
     }
@@ -84,21 +114,23 @@ void processState()
         if (uiFault == FaultState::LowWater && !Machine::isWaterTankLow()) {
             uiFault = FaultState::NoFault;
             uiState = UiState::Ready;
+            resetIdleTimer();
         }
     }
 
     // If lever is actuated at any time, move to brew phase.
     if ((uiState != UiState::Brewing) && Machine::isLeverPulled()) {
         uiState = UiState::Brewing;
+        resetIdleTimer();
 
         // De-bounce
         // (prevent another shot from being registered if lever is quickly released and pulled again)
-        if ((brewStats.end_brew_time > 0) && ((millis() - brewStats.end_brew_time) < 500)) {
+        if ((brewStats.end_brew_time > 0) && ((t_now - brewStats.end_brew_time) < lever_debounce_interval_ms)) {
             return;
         }
 
         // Restart brew timer
-        brewStats.start_brew_time = millis();
+        brewStats.start_brew_time = t_now;
         brewStats.end_brew_time = 0;
 
         // Reset flow accumulation
@@ -110,18 +142,33 @@ void processState()
     if (uiState == UiState::Brewing && !Machine::isLeverPulled()) {
         //uiState = UiState::PostBrew;
         uiState = UiState::Ready;
+        resetIdleTimer();
 
         uiFreezeGraphs();
 
         // Stop brew timer
-        brewStats.end_brew_time = millis();
+        brewStats.end_brew_time = t_now;
+
+        // Switch into steaming mode for a minute
+        HeatControl::setMode(HeatControl::Mode::Steam);
         return;
     }
 
-    if (uiState == UiState::Ready && ((millis() - brewStats.end_brew_time) > 60000)) {
+    if (uiState == UiState::Ready && ((t_now - brewStats.end_brew_time) >= CONFIG_BREW_FINISH_TIMEOUT_MS)) {
         // Reset ready page after some timeout
         brewStats.end_brew_time = 0;
         brewStats.start_brew_time = 0;
+
+        HeatControl::setMode(HeatControl::Mode::Brew);
+        resetIdleTimer();
+    }
+
+    if ((uiState == UiState::Ready) && (t_idle_start > 0)) {
+        if ((t_now - t_idle_start) >= CONFIG_IDLE_TIMEOUT_MS) {
+            // Go to sleep after idle timeout
+            Serial.println("Idle timeout - going to sleep");
+            uiState = UiState::Sleep;
+        }
     }
 }
 

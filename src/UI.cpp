@@ -3,6 +3,7 @@
 #include "UIWidgets.h"
 #include "Display.h"
 #include "SensorSampler.h"
+#include "HeatControl.h"
 #include "Machine.h"
 #include "value_array.h"
 #include "secrets.h"
@@ -62,7 +63,6 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
             color = TFT_ORANGERED;
 
             // Pulse animation
-            
             ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
 
             break;
@@ -106,6 +106,15 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
 
             break;
 
+        case UiState::Sleep:
+            status_str = "ZzZz";
+            color = TFT_DARKCYAN;
+
+            // Pulse animation
+            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+
+            break;
+
         case UiState::FirmwareUpdate:
             status_str = "UPDATING";
             color = TFT_SKYBLUE;
@@ -127,16 +136,37 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
     }
 }
 
+void uiGetRadialCoords(int32_t r, float angle, int32_t *x, int32_t *y) {
+    angle = 180 + angle;
+    *x = (TFT_WIDTH/2)  + (r * -sinf(angle * deg2rad));
+    *y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
+}
+
 void uiRenderStatusIcons(GfxCanvas& gfx) {
     const int32_t r = (TFT_WIDTH/2) - 40;
-    const float angle = 180 - 45;
-    int32_t x = (TFT_WIDTH/2)  + (r * -sinf(angle * deg2rad));
-    int32_t y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
+    int32_t x, y;
 
     if (Machine::isHeaterOn()) {
         // TODO: Replace with heat icon
+        uiGetRadialCoords(r, -45, &x, &y);
         gfx.fillCircle(x, y, 5, TFT_ORANGERED);
     }
+
+    uint32_t color = TFT_BLACK;
+    auto mode = HeatControl::getMode();
+    switch (mode) {
+        case HeatControl::Mode::Brew:
+            color = TFT_RED;
+            break;
+        case HeatControl::Mode::Steam:
+            color = TFT_SKYBLUE;
+            break;
+        case HeatControl::Mode::Sleep:
+            color = TFT_DARKCYAN;
+            break;
+    }
+    uiGetRadialCoords(r, +45, &x, &y);
+    gfx.fillCircle(x, y, 5, color);
 }
 
 void uiRenderMargin() {
@@ -465,6 +495,9 @@ void render() {
             break;
         case UiState::Brewing:
             uiRenderBrewing();
+            uiRenderTemperatureLeft();
+            break;
+        case UiState::Sleep:
             uiRenderTemperatureLeft();
             break;
         case UiState::SensorTest:

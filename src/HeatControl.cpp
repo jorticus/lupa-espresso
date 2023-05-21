@@ -19,7 +19,7 @@ static double pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
 // #define STARTKP 45                 // PID Kp (coldstart phase)
 // #define STARTTN 130                // PID Tn (coldstart phase)
 
-static const double Kp = 40.0;
+static const double Kp = 20.0;
 static const double Ki = Kp / 130.0; // Ki = Kp / Tn
 static const double Kd = Kp * 0.5; // Kd = Kp * Tv
 // TODO: Kd reuslts in very spikey output. It needs to be filtered either on the input or on the output.
@@ -49,6 +49,8 @@ const float MAX_BOILER_TEMPERATURE = CONFIG_MAX_BOILER_TEMPERATURE_C;
 
 namespace HeatControl {
 
+static Mode operating_mode;
+
 void initControlLoop()
 {
     pid.SetOutputLimits(PID_OUTPUT_MIN, PID_OUTPUT_MAX);
@@ -64,6 +66,8 @@ void initControlLoop()
     // TODO: Prevent integral from going below 0, as it can
     // take a LOT longer to cool down than it will to warm up,
     // so the integral term will work against us.
+
+    setMode(Mode::Brew);
 }
 
 void processControlLoop()
@@ -140,6 +144,30 @@ void processControlLoop()
         }
 
     }
+}
+
+void setMode(Mode mode) {
+    operating_mode = mode;
+
+    Serial.print("Boiler heat mode: ");
+    switch (mode) {
+        case Mode::Brew:
+            Serial.println("Brew");
+            pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
+            break;
+        case Mode::Steam:
+            Serial.println("Steam");
+            pid_setpoint = CONFIG_BOILER_STEAM_TEMPERATURE_C;
+            break;
+        case Mode::Sleep:
+            Serial.println("Sleep");
+            pid_setpoint = CONFIG_BOILER_SLEEP_TEMPERATURE_C;
+            break;
+    }
+}
+
+Mode getMode() {
+    return operating_mode;
 }
 
 }

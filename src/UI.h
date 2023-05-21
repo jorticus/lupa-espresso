@@ -27,6 +27,7 @@ namespace UI {
         PostBrew,
         SensorTest,
         FirmwareUpdate,
+        Sleep,
     };
 
     enum class FaultState {

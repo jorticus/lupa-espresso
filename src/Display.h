@@ -8,7 +8,7 @@ typedef TFT_eSprite GfxCanvas;
 
 /// @brief Handles updating the TFT display, but not rendering of UI
 namespace Display {
-    
+
     extern GfxCanvas gfx_left;
     extern GfxCanvas gfx_right;
 
@@ -20,6 +20,10 @@ namespace Display {
 
     /// @brief Update TFT with contents of the left/right canvases
     void tftUpdateDisplay();
+
+    /// @brief Set the display backlight brightness
+    /// @param brightness 0.0 to 1.0
+    void setBrightness(float brightness);
 
     /// @brief Get the SPIClass instance used by the TFT
     SPIClass& getSPIInstance();

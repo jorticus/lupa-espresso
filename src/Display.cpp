@@ -10,6 +10,8 @@ TFT_eSPI    tft;
 TFT_eSprite gfx_left  { &tft };
 TFT_eSprite gfx_right { &tft };
 
+float display_brightness = 1.0;
+
 void initDisplay() {
     Serial.println("Initialize LCD...");
 
@@ -35,6 +37,10 @@ void initDisplay() {
 
     gfx_left.setTextSize(2);
     gfx_right.setTextSize(2);
+
+    digitalWrite(TFT_BL, LOW);
+    ledcAttachPin(TFT_BL, 0);
+    ledcSetup(0, 4000, 8); // 12Khz 8bit resolution
 }
 
 void tftClearCanvas() {
@@ -54,7 +60,23 @@ void tftUpdateDisplay() {
     digitalWrite(TFT_CS_LEFT, HIGH);
 
     // Enable backlight
-    digitalWrite(TFT_BL, HIGH);
+    //digitalWrite(TFT_BL, HIGH);
+    setBrightness(display_brightness);
+}
+
+void setBrightness(float brightness) {
+    //analogWrite(TFT_BL, (brightness))
+    int b = (brightness * 0xFF);
+    Serial.printf("Brightness: %d\n", b);
+    
+    if (b > 0) {
+        ledcWrite(0, b);
+    }
+    else {
+        digitalWrite(TFT_BL, LOW);
+    }
+
+    display_brightness = brightness;
 }
 
 SPIClass& getSPIInstance() {
