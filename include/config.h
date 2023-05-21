@@ -7,7 +7,7 @@
 // Preheat end temperature
 // Defines when to exit the preheat phase and become ready.
 // Does not control actual target temperature.
-#define CONFIG_BOILER_PREHEAT_TEMPERATURE_C (90.0f);
+#define CONFIG_BOILER_PREHEAT_TEMPERATURE_C (90.0f)
 
 // Maximum boiler temperature
 #define CONFIG_MAX_BOILER_TEMPERATURE_C (123.0f)

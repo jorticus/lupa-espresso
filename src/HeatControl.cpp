@@ -8,20 +8,36 @@
 
 static double pid_input = 0.0;
 static double pid_output = 0.0;
+static double pid_last_output = 0.0;
 static double pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
 
-// Defaults from smartcoffee project,
-// seem to work okay with my machine.
+// Defaults from smartcoffee project
 // https://github.com/rancilio-pid/clevercoffee/blob/4c8ce515c5360aac4235b064c044bd739356de09/src/defaults.h
-static const double Kp = 45.0;
-static const double Ki = 45.0 / 130.0; // Ki = Kp / Tn
-static const double Kd = 0;
+// #define AGGKP 62                   // PID Kp (regular phase)
+// #define AGGTN 52                   // PID Tn (regular phase)
+// #define AGGTV 11.5                 // PID Tv (regular phase)
+// #define STARTKP 45                 // PID Kp (coldstart phase)
+// #define STARTTN 130                // PID Tn (coldstart phase)
+
+static const double Kp = 40.0;
+static const double Ki = Kp / 130.0; // Ki = Kp / Tn
+static const double Kd = Kp * 0.5; // Kd = Kp * Tv
+// TODO: Kd reuslts in very spikey output. It needs to be filtered either on the input or on the output.
+// One solution could be to calculate d(input) over a larger time window (eg. 1min)...
+
+// TODO: Kd will be needed to avoid overshoot, which is currently occuring
+
+// TODO: May need to incorporate another temperature probe for steam water,
+// as currently the control loop doesn't respond to a drop in main boiler temperature
+// until far too late.
 
 // TODO: Internally this uses doubles, should really use floats
 static PID pid(&pid_input, &pid_output, &pid_setpoint, Kp, Ki, Kd, DIRECT);
 
 static unsigned long t_start = 0;
 static unsigned long t_width = 0;
+
+const double PID_REGULATE_RANGE_TEMPERATURE = 20.0;
 
 const float PID_OUTPUT_MAX = 100.0;
 const float PID_OUTPUT_MIN = 0.0;
@@ -75,7 +91,8 @@ void processControlLoop()
         }
 
         // Not yet near the pid_setpoint, 100% duty until we get close
-        if (pid_input < (pid_setpoint - 10.0)) {
+        if (pid_input < CONFIG_BOILER_PREHEAT_TEMPERATURE_C) {
+            Serial.printf("PREHEAT: %.1f\n", pid_input);
             Machine::setHeat(true);
             Machine::setHeatPower(1.0);
             return;
@@ -84,16 +101,16 @@ void processControlLoop()
 
             if (pid.Compute()) {
                 Serial.printf("PID Target: %.1f, %.1f, %.1f\n", pid_input, pid_output, pid_setpoint);
-                if (pid_output > 0.0) {
-                    Machine::setHeatPower(pid_output * 0.01f);
-                    t_width = (unsigned long)(pid_output * (double)HEATER_PERIOD * 0.01);
 
-                    // if (t_width > (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
-                    //     t_width = (HEATER_PERIOD - HEATER_MIN_PERIOD;
-                    // }
+                if (pid_output > 0.0) {
+                    if (t_start == 0) {
+                        Machine::setHeatPower(pid_output * 0.01f);
+                        t_width = (unsigned long)(pid_output * (double)HEATER_PERIOD * 0.01);
+                    }
                 }
                 else {
                     Machine::setHeatPower(0.0);
+                    Machine::setHeat(false);
                 }
             }
 
