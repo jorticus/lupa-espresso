@@ -91,6 +91,12 @@ void processState()
     if ((uiState != UiState::Brewing) && Machine::isLeverPulled()) {
         uiState = UiState::Brewing;
 
+        // De-bounce
+        // (prevent another shot from being registered if lever is quickly released and pulled again)
+        if ((brewStats.end_brew_time > 0) && ((millis() - brewStats.end_brew_time) < 500)) {
+            return;
+        }
+
         // Restart brew timer
         brewStats.start_brew_time = millis();
         brewStats.end_brew_time = 0;
