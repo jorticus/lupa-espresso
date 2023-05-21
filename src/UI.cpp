@@ -249,7 +249,7 @@ void uiRenderTemperatureLeft()
         }
         buffer[sizeof(buffer)-1] = '\0';
 
-        uiRenderLabelCentered(gfx_left, buffer, -15);
+        uiRenderLabelCentered(gfx_left, buffer, (TFT_HEIGHT/2 - 60));
     }
 
     // Estimated grouphead temperature
@@ -266,7 +266,7 @@ void uiRenderTemperatureLeft()
         }
         buffer[sizeof(buffer)-1] = '\0';
 
-        uiRenderLabelCentered(gfx_left, buffer, 15);
+        uiRenderLabelCentered(gfx_left, buffer, (TFT_HEIGHT/2 - 30));
     }
 
     uiRenderTemperatureGauge(gfx_left);
@@ -303,8 +303,8 @@ void uiRenderReady()
         snprintf(buffer, sizeof(buffer), "%.1f", brewTimeSec);
         buffer[sizeof(buffer)-1] = '\0';
 
-        uiRenderLabelCentered(gfx_right, "BREW TIME:", -20);
-        uiRenderLabelCentered(gfx_right, buffer, 0);
+        uiRenderLabelCentered(gfx_right, "BREW TIME:", (-(TFT_HEIGHT/2) + 60));
+        uiRenderLabelCentered(gfx_right, buffer,  (-(TFT_HEIGHT/2) + 90));
     }
     else {
         //uiRenderLabelCentered(gfx_right, "READY", 0);
