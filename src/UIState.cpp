@@ -79,8 +79,6 @@ void processState()
         onStateChanged();
     }
 
-    auto t_now = millis();
-
     // NOTE: Process faults first.
 
 /*
@@ -122,6 +120,7 @@ void processState()
     if ((uiState != UiState::Brewing) && Machine::isLeverPulled()) {
         uiState = UiState::Brewing;
         resetIdleTimer();
+        auto t_now = millis();
 
         // De-bounce
         // (prevent another shot from being registered if lever is quickly released and pulled again)
@@ -147,24 +146,30 @@ void processState()
         uiFreezeGraphs();
 
         // Stop brew timer
-        brewStats.end_brew_time = t_now;
+        brewStats.end_brew_time = millis();
 
-        // Switch into steaming mode for a minute
+        // Switch into steaming mode
         HeatControl::setMode(HeatControl::Mode::Steam);
         return;
     }
 
-    if (uiState == UiState::Ready && ((t_now - brewStats.end_brew_time) >= CONFIG_BREW_FINISH_TIMEOUT_MS)) {
-        // Reset ready page after some timeout
-        brewStats.end_brew_time = 0;
-        brewStats.start_brew_time = 0;
+    if (uiState == UiState::Ready) {
 
-        HeatControl::setMode(HeatControl::Mode::Brew);
-        resetIdleTimer();
-    }
+        if ((brewStats.end_brew_time > 0) && 
+            ((millis() - brewStats.end_brew_time) >= (unsigned long)CONFIG_BREW_FINISH_TIMEOUT_MS))
+        {
+            // Reset ready page after some timeout
+            brewStats.end_brew_time = 0;
+            brewStats.start_brew_time = 0;
 
-    if ((uiState == UiState::Ready) && (t_idle_start > 0)) {
-        if ((t_now - t_idle_start) >= CONFIG_IDLE_TIMEOUT_MS) {
+            // Return to brew mode
+            HeatControl::setMode(HeatControl::Mode::Brew);
+            resetIdleTimer();
+        }
+
+        if ((t_idle_start > 0) &&
+            ((millis() - t_idle_start) >= (unsigned long)CONFIG_IDLE_TIMEOUT_MS))
+        {
             // Go to sleep after idle timeout
             Serial.println("Idle timeout - going to sleep");
             uiState = UiState::Sleep;

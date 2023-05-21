@@ -11,6 +11,7 @@ TFT_eSprite gfx_left  { &tft };
 TFT_eSprite gfx_right { &tft };
 
 float display_brightness = 1.0;
+bool backlight_en = false;
 
 void initDisplay() {
     Serial.println("Initialize LCD...");
@@ -38,6 +39,8 @@ void initDisplay() {
     gfx_left.setTextSize(2);
     gfx_right.setTextSize(2);
 
+    backlight_en = false;
+
     digitalWrite(TFT_BL, LOW);
     ledcAttachPin(TFT_BL, 0);
     ledcSetup(0, 4000, 8); // 12Khz 8bit resolution
@@ -60,8 +63,11 @@ void tftUpdateDisplay() {
     digitalWrite(TFT_CS_LEFT, HIGH);
 
     // Enable backlight
-    //digitalWrite(TFT_BL, HIGH);
-    setBrightness(display_brightness);
+    if (!backlight_en) {
+        backlight_en = true;
+        setBrightness(display_brightness);
+    }
+    
 }
 
 void setBrightness(float brightness) {

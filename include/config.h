@@ -6,12 +6,14 @@
 // Does not control actual target temperature.
 #define CONFIG_BOILER_PREHEAT_TEMPERATURE_C (90.0f)
 
-// Target boiler temperature
+// Target boiler temperature for brewing
 //#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
 #define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
 
+// Target boiler temperature for steaming
 #define CONFIG_BOILER_STEAM_TEMPERATURE_C (123.0f)
 
+// Target boiler temperature in sleep mode
 #define CONFIG_BOILER_SLEEP_TEMPERATURE_C (95.0f)
 
 // Maximum boiler temperature
