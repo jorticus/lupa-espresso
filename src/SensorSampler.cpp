@@ -151,12 +151,19 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     // Since we're only sampling at ~10Hz, we should always have a sample available.
     if (rtd.isSampleReady()) {
         auto raw = rtd.readSample();
-        if (raw != 0) {
+        if (raw > 0 && raw < 0x7FFF) {
             filter2.add(raw);
+
+            // auto unfiltered_temp = calculateRtdTemperature(raw);
+            // if (unfiltered_temp > 200.0f) {
+            //     Serial.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+            // }
+
             if (filter2.isReady()) {
                 float raw_filtered = filter2.get();
                 auto temperature = calculateRtdTemperature(raw_filtered);
                 if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+
                     value_temperature = temperature;
                     is_valid_temperature = true;
                 }
