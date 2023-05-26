@@ -10,7 +10,7 @@ void uiFreezeGraphs(); // UI.cpp
 
 BrewStats brewStats = {0};
 
-const float preheat_temperature = CONFIG_BOILER_PREHEAT_TEMPERATURE_C;
+#define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
 
 const unsigned long lever_debounce_interval_ms = 500;
 static unsigned long t_idle_start = 0;
@@ -100,16 +100,17 @@ void processState()
 
     if (uiState == UiState::Preheat) {
         // Device is ready once temperature rises above the configured threshold
-        if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() > preheat_temperature)) {
-            if (CONFIG_SLEEP_AFTER_PREHEAT) {
+        if (SensorSampler::isTemperatureValid()) {
+            auto t = SensorSampler::getTemperature();
+            // Up to sleeping temperature, go to sleep
+            if (t > CONFIG_BOILER_SLEEP_TEMPERATURE_C && CONFIG_SLEEP_AFTER_PREHEAT) {
                 uiState = UiState::Sleep;
             }
-            else {
+            // Close to boiler temperature, go to ready
+            else if (t >= PREHEAT_TEMPERATURE_C) {
                 uiState = UiState::Ready;
+                resetIdleTimer();
             }
-
-            resetIdleTimer();
-            return;
         }
     }
 
@@ -124,6 +125,15 @@ void processState()
 
     // If lever is actuated at any time, move to brew phase.
     if ((uiState != UiState::Brewing) && Machine::isLeverPulled()) {
+        if (uiState == UiState::Sleep) {
+            // Wake from sleep, go to preheat if not yet hot enough
+            if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() < PREHEAT_TEMPERATURE_C)) {
+                uiState = UiState::Preheat;
+                resetIdleTimer();
+                return;
+            }
+        }
+
         uiState = UiState::Brewing;
         resetIdleTimer();
         auto t_now = millis();
