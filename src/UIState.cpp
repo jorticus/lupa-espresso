@@ -101,7 +101,13 @@ void processState()
     if (uiState == UiState::Preheat) {
         // Device is ready once temperature rises above the configured threshold
         if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() > preheat_temperature)) {
-            uiState = UiState::Ready;
+            if (CONFIG_SLEEP_AFTER_PREHEAT) {
+                uiState = UiState::Sleep;
+            }
+            else {
+                uiState = UiState::Ready;
+            }
+
             resetIdleTimer();
             return;
         }
