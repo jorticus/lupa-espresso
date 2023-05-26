@@ -37,6 +37,7 @@ static PID pid(&pid_input, &pid_output, &pid_setpoint, Kp, Ki, Kd, DIRECT);
 static unsigned long t_start = 0;
 static unsigned long t_width = 0;
 
+// Deactivate PID regulation if temperature is this much less than the current setpoint
 const double PID_REGULATE_RANGE_TEMPERATURE = 20.0;
 
 const float PID_OUTPUT_MAX = 100.0;
@@ -86,7 +87,7 @@ void processControlLoop()
         Machine::failsafe();
     }
     else {
-        pid_input = SensorSampler::getTemperature();
+        pid_input = (double)SensorSampler::getTemperature();
 
         if (pid_input > MAX_BOILER_TEMPERATURE) {
             Machine::setHeat(false);
@@ -95,13 +96,27 @@ void processControlLoop()
         }
 
         // Not yet near the pid_setpoint, 100% duty until we get close
-        if (pid_input < CONFIG_BOILER_PREHEAT_TEMPERATURE_C) {
+        if (pid_input < (pid_setpoint - PID_REGULATE_RANGE_TEMPERATURE)) {
             Serial.printf("PREHEAT: %.1f\n", pid_input);
             Machine::setHeat(true);
             Machine::setHeatPower(1.0);
             return;
         }
         else {
+
+            // Override PID when water is flowing
+            if (SensorSampler::isFlowRateValid()) {
+                auto flow = SensorSampler::getFlowRate();
+                if (flow > 1.0f) {
+                    //pid.SetMode(MANUAL);
+                    // Apply an offset to the thermocouple reading
+                    // to account for water flow through the boiler.
+                    // This will tell the PID to ramp up the heater.
+                    // TODO: Could use the I term inside the PID controller to apply this offset?
+                    pid_input -= 20.0;
+                }
+            }
+            pid.SetMode(AUTOMATIC);
 
             if (pid.Compute()) {
                 Serial.printf("PID Target: %.1f, %.1f, %.1f\n", pid_input, pid_output, pid_setpoint);
