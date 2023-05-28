@@ -151,7 +151,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     // Since we're only sampling at ~10Hz, we should always have a sample available.
     if (rtd.isSampleReady()) {
         auto raw = rtd.readSample();
-        if (raw > 0 && raw < 0x7FFF) {
+        if (raw > 0 && raw < 0x7000) {//0x7FFF) {
             filter2.add(raw);
 
             // auto unfiltered_temp = calculateRtdTemperature(raw);

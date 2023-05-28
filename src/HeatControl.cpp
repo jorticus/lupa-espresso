@@ -1,38 +1,28 @@
 #include <Arduino.h>
-#include <PID_v1.h>
 #include "SensorSampler.h"
 #include "HeatControl.h"
+#include "PID.h"
 #include "Machine.h"
 #include "hardware.h"
 #include "config.h"
 
-static double pid_input = 0.0;
-static double pid_output = 0.0;
-static double pid_last_output = 0.0;
-static double pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
+// static double pid_input = 0.0;
+// static double pid_output = 0.0;
+// static double pid_last_output = 0.0;
+// static double pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
+static float pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
 
-// Defaults from smartcoffee project
-// https://github.com/rancilio-pid/clevercoffee/blob/4c8ce515c5360aac4235b064c044bd739356de09/src/defaults.h
-// #define AGGKP 62                   // PID Kp (regular phase)
-// #define AGGTN 52                   // PID Tn (regular phase)
-// #define AGGTV 11.5                 // PID Tv (regular phase)
-// #define STARTKP 45                 // PID Kp (coldstart phase)
-// #define STARTTN 130                // PID Tn (coldstart phase)
-
-static const double Kp = 20.0;
-static const double Ki = Kp / 130.0; // Ki = Kp / Tn
-static const double Kd = Kp * 0.5; // Kd = Kp * Tv
-// TODO: Kd reuslts in very spikey output. It needs to be filtered either on the input or on the output.
-// One solution could be to calculate d(input) over a larger time window (eg. 1min)...
-
-// TODO: Kd will be needed to avoid overshoot, which is currently occuring
+static const float Kp = 10.0f;
+static const float Ki = Kp / 13.0f; // Ki = Kp / Tn
+static const float Kd = Kp * 5.0f; // Kd = Kp * Tv
 
 // TODO: May need to incorporate another temperature probe for steam water,
 // as currently the control loop doesn't respond to a drop in main boiler temperature
-// until far too late.
+// until far too late. 
+// Or, we could use a second pressure transducer which would respond very quickly, 
+// and also let us detect whether steam is being used.
 
-// TODO: Internally this uses doubles, should really use floats
-static PID pid(&pid_input, &pid_output, &pid_setpoint, Kp, Ki, Kd, DIRECT);
+static fPID pid;
 
 static unsigned long t_start = 0;
 static unsigned long t_width = 0;
@@ -40,11 +30,12 @@ static unsigned long t_width = 0;
 // Deactivate PID regulation if temperature is this much less than the current setpoint
 const double PID_REGULATE_RANGE_TEMPERATURE = 20.0;
 
-const float PID_OUTPUT_MAX = 100.0;
-const float PID_OUTPUT_MIN = 0.0;
+const float PID_OUTPUT_MAX = 100.0f;
+const float PID_OUTPUT_MIN = 0.0f;
 const unsigned long HEATER_MIN_PERIOD = 100;
 const unsigned long HEATER_MAX_PERIOD = 5000;
 const unsigned long HEATER_PERIOD = 5000;
+const unsigned long PID_PERIOD = 1000;
 
 const float MAX_BOILER_TEMPERATURE = CONFIG_MAX_BOILER_TEMPERATURE_C;
 
@@ -54,14 +45,15 @@ static Mode operating_mode;
 
 void initControlLoop()
 {
-    pid.SetOutputLimits(PID_OUTPUT_MIN, PID_OUTPUT_MAX);
-
-    pid.SetMode(AUTOMATIC);
+    pid.setOutputLimits(PID_OUTPUT_MIN, PID_OUTPUT_MAX);
+    pid.setParameters(Kp, Ki, Kd);
+    pid.setSetpoint(pid_setpoint);
+    pid.reset();
 
     Serial.printf("PID Parameters:\n\tKp: %.2f\n\tKi: %.2f\n\tKd: %.2f\n", 
-        pid.GetKp(),
-        pid.GetKi(),
-        pid.GetKd()
+        pid.getKp(),
+        pid.getKi(),
+        pid.getKd()
     );
 
     // TODO: Prevent integral from going below 0, as it can
@@ -76,6 +68,7 @@ void processControlLoop()
     // TODO: Watchdog for safety.
 
     static unsigned long t_last = 0;
+    static unsigned long t_last_pid = 0;
 
     // TODO: Scheme should operate in 3 modes:
     // 1. Preheat : Heat 100% on until reach defined temperature
@@ -87,39 +80,46 @@ void processControlLoop()
         Machine::failsafe();
     }
     else {
-        pid_input = (double)SensorSampler::getTemperature();
+        float pid_input = SensorSampler::getTemperature();
 
         if (pid_input > MAX_BOILER_TEMPERATURE) {
             Machine::setHeat(false);
-            Machine::setHeatPower(0.0);
+            Machine::setHeatPower(0.0f);
             return;
         }
 
         // Not yet near the pid_setpoint, 100% duty until we get close
         if (pid_input < (pid_setpoint - PID_REGULATE_RANGE_TEMPERATURE)) {
-            Serial.printf("PREHEAT: %.1f\n", pid_input);
+            if (Machine::getHeatPower() < 1.0f) {
+                Serial.printf("PREHEAT: %.1f\n", pid_input);
+            }
             Machine::setHeat(true);
-            Machine::setHeatPower(1.0);
+            Machine::setHeatPower(1.0f);
             return;
         }
         else {
 
             // Override PID when water is flowing
+            float offset = 0.0f;
             if (SensorSampler::isFlowRateValid()) {
                 auto flow = SensorSampler::getFlowRate();
                 if (flow > 1.0f) {
-                    //pid.SetMode(MANUAL);
-                    // Apply an offset to the thermocouple reading
-                    // to account for water flow through the boiler.
-                    // This will tell the PID to ramp up the heater.
-                    // TODO: Could use the I term inside the PID controller to apply this offset?
-                    pid_input -= 20.0;
+                    // Perturb the PID controller error to predict 
+                    // the fact that the temperature will start to decrease soon.
+                    offset = 20.0f;
                 }
             }
-            pid.SetMode(AUTOMATIC);
+            pid.setPerturbationOffset(offset);
+            //pid.SetMode(AUTOMATIC);
 
-            if (pid.Compute()) {
-                Serial.printf("PID Target: %.1f, %.1f, %.1f\n", pid_input, pid_output, pid_setpoint);
+            //if (pid.Compute()) {
+
+            auto t_now = millis();
+            if ((t_now - t_last_pid) >= PID_PERIOD) {
+                t_last_pid = t_now;
+                float pid_output = pid.calculateTick(pid_input);
+
+                //Serial.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
 
                 if (pid_output > 0.0) {
                     if (t_start == 0) {
@@ -133,9 +133,8 @@ void processControlLoop()
                 }
             }
 
-            auto t_now = millis();
-
             // Turn on heater every period, if non-zero
+            t_now = millis();
             if ((t_now - t_last) >= HEATER_PERIOD) {
                 t_last = t_now;
                 if ((t_width > HEATER_MIN_PERIOD) && (t_start == 0)) {
@@ -179,6 +178,8 @@ void setMode(Mode mode) {
             pid_setpoint = CONFIG_BOILER_SLEEP_TEMPERATURE_C;
             break;
     }
+
+    pid.setSetpoint(pid_setpoint);
 }
 
 Mode getMode() {

@@ -164,8 +164,10 @@ void processState()
         // Stop brew timer
         brewStats.end_brew_time = millis();
 
-        // Switch into steaming mode
-        HeatControl::setMode(HeatControl::Mode::Steam);
+        // Switch into steaming mode (only if brew was longer than 10sec)
+        if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
+            HeatControl::setMode(HeatControl::Mode::Steam);
+        }
         return;
     }
 

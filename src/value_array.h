@@ -17,7 +17,7 @@ public:
     }
 
     virtual size_t size() const = 0;
-    virtual T get(size_t i) = 0;
+    virtual T get(size_t i) const = 0;
 };
 
 /// @brief An array of values
@@ -63,13 +63,24 @@ public:
         return N;
     }
 
+    bool is_full() const {
+        return (n == N);
+    }
+
+    T first() const {
+        return get(n-1);
+    }
+    T last() const {
+        return get(0);
+    }
+
     /// @brief Get a sample at j
     /// @param j Index of the sample
     /// @return Sample
-    T get(size_t j) override {
+    T get(size_t j) const override {
         if (n == N) {
             // Buffer is full, use internal index to offset the array
-            j += i;
+            j += i; //(i + 1);
         }
         // Wrap
         while (j >= N) {
