@@ -20,7 +20,7 @@ PubSubClient client(net);
 ComponentContext context(client);
 
 const unsigned long sensor_sample_interval_ms = 1000;
-const unsigned long temperature_report_interval_ms = 10000;
+const unsigned long slow_sensor_sample_interval = 60*1000; // 1 min
 
 HAAvailabilityComponent availability(context);
 
@@ -34,7 +34,7 @@ HAComponent<Component::Switch> switch_power(context,
 HAComponent<Component::Sensor> sensor_temperature(context, 
     "boiler_t", 
     "Boiler Temperature", 
-    temperature_report_interval_ms, 
+    sensor_sample_interval_ms, 
     0.0f, 
     SensorClass::Temperature
 );
@@ -114,15 +114,17 @@ void HomeAssistant::process() {
             reportState();
         }
 
-        // Only report sensor readings when machine is on
-        if (state != UI::UiState::Off) {
-            if ((millis() - t_last) >= sensor_sample_interval_ms) {
-                t_last = millis();
+        // Use fast report rate when on, slow report rate when off
+        auto interval = (state != UI::UiState::Off) ?
+            sensor_sample_interval_ms : 
+            slow_sensor_sample_interval;
 
-                if (SensorSampler::isTemperatureValid()) {
-                    auto t = SensorSampler::getTemperature();
-                    sensor_temperature.update(t);
-                }
+        if ((millis() - t_last) >= interval) {
+            t_last = millis();
+
+            if (SensorSampler::isTemperatureValid()) {
+                auto t = SensorSampler::getTemperature();
+                sensor_temperature.update(t);
             }
         }
     }
