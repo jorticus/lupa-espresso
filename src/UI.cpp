@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include "UI.h"
 #include "UIWidgets.h"
 #include "Display.h"
@@ -151,6 +152,52 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
         uiGetRadialCoords(r, -45, &x, &y);
         gfx.fillCircle(x, y, 5, TFT_ORANGERED);
     }
+
+    // WiFi connection indicator
+    // TODO: Replace with WiFi icons
+    int wifiColor = TFT_YELLOW;
+    if (WiFi.getMode() & WIFI_MODE_STA) {
+        auto wifiStatus = WiFi.status();
+        if (wifiStatus == WL_IDLE_STATUS || wifiStatus >= WL_DISCONNECTED) {
+            float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
+            int16_t c = f*127.0f + 127.0f;
+            wifiColor = TFT_RGB656(0, 0, c);
+            //wifiColor = TFT_SKYBLUE;
+
+        }
+        else if (wifiStatus == WL_CONNECTED) {
+            wifiColor = TFT_DARKGREEN;
+        }
+
+        // auto ip_str = WiFi.localIP().toString();
+        // uiRenderLabelCentered(gfx_left, ip_str.c_str(), 30, TFT_LIGHTGREY);
+
+        const char* err_msg = nullptr;
+        switch (wifiStatus) {
+            case WL_NO_SSID_AVAIL:
+                // Bad SSID or AP not present
+                err_msg = "No SSID";
+                break;
+            case WL_CONNECT_FAILED:
+                err_msg = "Connect Failed";
+                break;
+            case WL_IDLE_STATUS:
+                err_msg = "Station Idle";
+                break;
+            case WL_CONNECTION_LOST:
+                err_msg = "Connection Lost";
+                break;
+        }
+        if (err_msg != nullptr) {
+            uiRenderLabelCentered(gfx_left, err_msg, 0);
+        }
+
+    }
+
+    uiGetRadialCoords(r, 22, &x, &y);
+    gfx.fillCircle(x, y, 5, wifiColor);
+
+
 
     uint32_t color = TFT_BLACK;
     auto mode = HeatControl::getMode();

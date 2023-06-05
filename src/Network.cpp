@@ -51,8 +51,7 @@ static void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (w
                     err_msg = "No SSID";
                     break;
                 case WL_CONNECT_FAILED:
-                    // Bad password
-                    err_msg = "Bad Password";
+                    err_msg = "Connect Failed";
                     break;
                 case WL_IDLE_STATUS:
                     err_msg = "Station Idle";
@@ -78,6 +77,7 @@ void initWiFi()
 
     WiFi.persistent(false);
 
+#if CONFIG_WAIT_FOR_WIFI
     while (WiFi.status() != WL_CONNECTED) {
         uiRenderWiFiConnect(WifiConnectionStatus::Connecting);
         Serial.println();
@@ -106,6 +106,15 @@ void initWiFi()
     Serial.println(WiFi.localIP());
 
     delay(1500);
+#else
+    WiFi.mode(WIFI_STA);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(secrets::device_name);
+    WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+    Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
+
+    WiFi.waitForConnectResult();
+#endif
 }
 
 }

@@ -31,3 +31,5 @@
 
 #define CONFIG_FULL_BRIGHTNESS (1.0f)
 #define CONFIG_IDLE_BRIGHTNESS (0.2f)
+
+#define CONFIG_WAIT_FOR_WIFI (false)
