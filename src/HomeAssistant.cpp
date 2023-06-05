@@ -56,7 +56,7 @@ void HomeAssistant::init() {
     context.friendly_name = "LUPA Espresso";
     context.model = "VBM Domobar Junior";
 
-    HAComponentManager::InitializeAll();
+    HAComponentManager::initializeAll();
 
     // For SSL
     //net.setCACert(secrets::ca_root_cert);
@@ -65,7 +65,7 @@ void HomeAssistant::init() {
     client.setBufferSize(HA_MQTT_MAX_PACKET_SIZE);
     client.setServer(secrets::mqtt_server, secrets::mqtt_port);
 
-    client.setCallback(HAComponentManager::OnMessageReceived);
+    client.setCallback(HAComponentManager::onMessageReceived);
 
 }
 
@@ -73,36 +73,37 @@ void reportState() {
     // State changed, report it...
     auto state = UI::getState();
     
-    switch_power.SetState((state != UI::UiState::Off));
+    switch_power.setState((state != UI::UiState::Off));
 
-    sensor_isbrewing.ReportState((state == UI::UiState::Brewing));
+    sensor_isbrewing.reportState((state == UI::UiState::Brewing));
 }
 
 void onConnect() {
     // Publish all components to HomeAssistant, and subscribe to any required topics
-    HAComponentManager::PublishConfigAll();
-
-    // Notify HomeAsisstant that our device is now alive
-    availability.Connect();
+    HAComponentManager::publishConfigAll();
 }
 
 void HomeAssistant::process() {
     static unsigned long t_last = 0;
+    static unsigned long t_last_connect = 0;
     static UI::UiState last_ui_state = UI::UiState::Init;
 
     if (!client.connected()) {
-        String will_topic 		= HAAvailabilityComponent::inst->getWillTopic();
-        const char* will_msg 	= HAAvailabilityComponent::OFFLINE;
-        uint8_t will_qos 		= 0;
-        bool will_retain 		= true;
+        // Throttle reconnection attempts
+        if ((millis() - t_last_connect) > 1000) {
+            Serial.println("Connecting MQTT");
+            bool connected = HAComponentManager::connectClientWithAvailability(client, 
+                secrets::device_name, 
+                secrets::mqtt_username, 
+                secrets::mqtt_password);
 
-        auto connected = client.connect(
-            secrets::device_name, secrets::mqtt_username, secrets::mqtt_password, 
-            will_topic.c_str(), will_qos, will_retain, will_msg);
-
-        if (connected) {
-            onConnect();
-            reportState();
+            if (connected) {
+                Serial.println("MQTT connected, publishing config...");
+                onConnect();
+                reportState();
+            }
+            
+            t_last_connect = millis();
         }
     }
     else {
@@ -120,15 +121,11 @@ void HomeAssistant::process() {
 
                 if (SensorSampler::isTemperatureValid()) {
                     auto t = SensorSampler::getTemperature();
-                    sensor_temperature.Update(t);
+                    sensor_temperature.update(t);
                 }
             }
         }
     }
 
     client.loop();
-}
-
-void HomeAssistant::reportPowerControlState(bool pwr) {
-//    switch_power.SetState(pwr);
 }
