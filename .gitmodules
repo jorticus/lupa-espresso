@@ -1,0 +1,3 @@
+[submodule "libraries/hacomponent"]
+	path = libraries/hacomponent
+	url = https://github.com/jorticus/hacomponent.git

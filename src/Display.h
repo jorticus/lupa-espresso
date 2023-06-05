@@ -25,6 +25,8 @@ namespace Display {
     /// @param brightness 0.0 to 1.0
     void setBrightness(float brightness);
 
+    void turnOff();
+
     /// @brief Get the SPIClass instance used by the TFT
     SPIClass& getSPIInstance();
 }

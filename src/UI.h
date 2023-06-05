@@ -19,6 +19,7 @@ namespace UI {
     } BrewStats;
 
     enum class UiState {
+        Off,
         Init,
         Preheat,
         Ready,
@@ -27,7 +28,7 @@ namespace UI {
         PostBrew,
         SensorTest,
         FirmwareUpdate,
-        Sleep,
+        Sleep
     };
 
     enum class FaultState {
@@ -52,8 +53,14 @@ namespace UI {
     /// @brief Set the UI state, changing what is shown
     void setState(UiState state);
 
+    UiState getState();
+
     /// @brief Set a fault state
     void setFault(FaultState fault);
+
+    /// @brief Set power control state
+    /// @param pwr On/off
+    void setPowerControl(bool pwr);
 
     /// @brief Update internal UI state machine
     void processState();

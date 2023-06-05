@@ -3,6 +3,8 @@
 #include "SensorSampler.h"
 #include "config.h"
 #include "HeatControl.h"
+#include "Machine.h"
+#include "HomeAssistant.h"
 
 namespace UI {
 
@@ -15,6 +17,7 @@ BrewStats brewStats = {0};
 const unsigned long lever_debounce_interval_ms = 500;
 static unsigned long t_idle_start = 0;
 static unsigned long t_steam_start = 0;
+static bool power_state = true;
 
 static const char* UiState_Str[] = {
     "Init",
@@ -30,6 +33,10 @@ static const char* UiState_Str[] = {
 
 void setState(UiState state) {
     uiState = state;
+}
+
+UiState getState() {
+    return uiState;
 }
 
 void setFault(FaultState state) {
@@ -60,14 +67,50 @@ void onStateChanged() {
         case UiState::Sleep:
             Display::setBrightness(CONFIG_IDLE_BRIGHTNESS);
             HeatControl::setMode(HeatControl::Mode::Sleep);
+
+            // TODO: Should we report sleep as ON or OFF?
+            //HomeAssistant::reportPowerControlState(true);
+            break;
+        case UiState::Off:
+            Display::setBrightness(0.0f);
+            Display::turnOff();
+            HeatControl::setMode(HeatControl::Mode::Off);
+            Machine::failsafe();
+            //HomeAssistant::reportPowerControlState(false);
             break;
         default:
             Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
-            if (HeatControl::getMode() == HeatControl::Mode::Sleep) {
+
+            auto heatMode = HeatControl::getMode();
+            if (heatMode == HeatControl::Mode::Sleep ||
+                heatMode == HeatControl::Mode::Off)
+            {
                 HeatControl::setMode(HeatControl::Mode::Brew);
+                //HomeAssistant::reportPowerControlState(true);
             }
             break;
     }
+}
+
+void setPowerControl(bool pwr)
+{
+    Serial.print("POWER: ");
+    Serial.println(pwr ? "ON" : "OFF");
+
+    if (pwr) {
+        if (uiState == UiState::Off || uiState == UiState::Sleep) {
+            uiState = UiState::Preheat;
+            resetIdleTimer();
+        }
+    }
+    else {
+        uiState = UiState::Off;
+    }
+
+    // Force an update of state before returning to ensure
+    // we're in the right state before updating the UI,
+    // as machine may be faulted, or already preheated, etc.
+    processState();
 }
 
 void processState()
@@ -77,6 +120,10 @@ void processState()
         _lastUiState = uiState;
         printState(uiState);
         onStateChanged();
+    }
+
+    if (uiState == UiState::Off) {
+        return;
     }
 
     // NOTE: Process faults first.

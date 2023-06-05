@@ -6,6 +6,7 @@
 #include <Wire.h>
 #include <Adafruit_SPIDevice.h>
 #include <Adafruit_MAX31865.h>
+#include <WiFi.h>
 #include "secrets.h"
 #include "PressureTransducer.h"
 #include "PulseCounter.h"
@@ -20,6 +21,9 @@
 #include "UI.h"
 #include "Network.h"
 #include "OTA.h"
+#include "HomeAssistant.h"
+
+Stream& Debug = Serial;
 
 /// @brief Network name of the device
 const char* DEVICE_NAME = "LUPA";
@@ -53,6 +57,7 @@ void setup() {
     Display::initDisplay();
     Network::initWiFi();
     OTA::initOTA();
+    HomeAssistant::init();
 
     bool isSensorsInitialized = SensorSampler::initialize();
 
@@ -78,7 +83,12 @@ void loop()
 {
     OTA::handle();
 
-    if (UI::uiState != UI::UiState::FirmwareUpdate)
+    if (WiFi.status() == WL_CONNECTED) {
+        HomeAssistant::process();
+    }
+
+    if (UI::uiState != UI::UiState::FirmwareUpdate && 
+        UI::uiState != UI::UiState::Off)
     {
         UI::processState();
 

@@ -4,6 +4,7 @@
 namespace HeatControl {
 
     enum class Mode {
+        Off,
         Sleep,
         Brew,
         Steam

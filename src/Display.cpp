@@ -79,10 +79,19 @@ void setBrightness(float brightness) {
         ledcWrite(0, b);
     }
     else {
+        ledcWrite(0, 0);
         digitalWrite(TFT_BL, LOW);
     }
 
     display_brightness = brightness;
+}
+
+void turnOff() {
+    tftClearCanvas();
+    tftUpdateDisplay();
+
+    ledcWrite(0, 0);
+    digitalWrite(TFT_BL, LOW);
 }
 
 SPIClass& getSPIInstance() {

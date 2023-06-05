@@ -75,7 +75,10 @@ void processControlLoop()
     // 2. Regulate : PID control loop to keep within target
     // 3. Steam : Heat 100% while pressure is low to maintain steam
 
-    if (!SensorSampler::isTemperatureValid() || Machine::isWaterTankLow()) {
+    if (!SensorSampler::isTemperatureValid() || 
+        Machine::isWaterTankLow() || 
+        (operating_mode == Mode::Off))
+    {
         // Turn off heat/pump/etc if we don't have a temperature reading
         Machine::failsafe();
     }
@@ -165,6 +168,10 @@ void setMode(Mode mode) {
 
     Serial.print("Boiler heat mode: ");
     switch (mode) {
+        case Mode::Off:
+            //pid_setpoint = 0.0f;
+            // TODO: Reset/Disable PID controller
+            break;
         case Mode::Brew:
             Serial.println("Brew");
             pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
