@@ -85,6 +85,7 @@ void initOTA() {
         // Put system into a safe state
 		Machine::failsafe();
         UI::setState(UI::UiState::FirmwareUpdate);
+        Display::setBrightness(1.0f);
 		Serial.println("OTA Initiated");
 
         uiRenderFirmwareUpdate(OtaState::Begin, 0);
