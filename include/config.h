@@ -33,3 +33,7 @@
 #define CONFIG_IDLE_BRIGHTNESS (0.2f)
 
 #define CONFIG_WAIT_FOR_WIFI (false)
+
+// Measured power of boiler in watts,
+// used for estimating energy consumption
+#define CONFIG_BOILER_FULL_POWER (1333.0f)

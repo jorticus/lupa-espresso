@@ -34,6 +34,8 @@ void failsafe() {
     digitalWrite(PIN_OUT_FILL_SOLENOID, LOW);
 
     //digitalWrite(TFT_BL, LOW);
+
+    s_heaterPower = 0.0f;
 }
 
 void initGpio() {

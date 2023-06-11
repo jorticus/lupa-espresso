@@ -7,6 +7,8 @@
 #include "UI.h"
 #include "SensorSampler.h"
 #include "StateMachine.h"
+#include "IO.h"
+#include "config.h"
 //#include "version.h"
 
 // version.py
@@ -22,6 +24,7 @@ ComponentContext context(client);
 
 const unsigned long sensor_sample_interval_ms = 1000;
 const unsigned long slow_sensor_sample_interval = 60*1000; // 1 min
+const unsigned long power_sample_interval_ms = 10*1000;
 
 HAAvailabilityComponent availability(context);
 
@@ -45,6 +48,14 @@ HAComponent<Component::BinarySensor> sensor_isbrewing(context,
     "Is Brewing", 
     BinarySensorClass::Undefined, 
     "mdi:coffee-to-go"
+);
+
+HAComponent<Component::Sensor> sensor_power(context,
+    "boiler_w",
+    "Boiler Watts",
+    power_sample_interval_ms,
+    0.0f,
+    SensorClass::Power
 );
 
 void HomeAssistant::init() {
@@ -123,10 +134,15 @@ void HomeAssistant::process() {
         if ((millis() - t_last) >= interval) {
             t_last = millis();
 
+            // Report current boiler temperature to HA
             if (SensorSampler::isTemperatureValid()) {
                 auto t = SensorSampler::getTemperature();
                 sensor_temperature.update(t);
             }
+
+            // Estimate boiler power and report to HA
+            float estimated_power = IO::getHeatPower() * CONFIG_BOILER_FULL_POWER;
+            sensor_power.update(estimated_power);
         }
     }
 
