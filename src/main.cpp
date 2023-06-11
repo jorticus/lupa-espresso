@@ -82,6 +82,7 @@ void setup() {
 
 void loop()
 {
+    Network::handle();
     OTA::handle();
     IO::process();
 
