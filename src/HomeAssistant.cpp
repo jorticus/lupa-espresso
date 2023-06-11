@@ -85,7 +85,12 @@ void reportState() {
     // State changed, report it...
     auto state = State::getState();
     
-    switch_power.setState((state != State::MachineState::Off));
+    // Don't report state on transition to sleep,
+    // as that causes a bounce back call to State::setPowerControl(true),
+    // which in turn bumps the state back to Preheat.
+    if (state != State::MachineState::Sleep) {
+        switch_power.setState((state != State::MachineState::Off));
+    }
 
     sensor_isbrewing.reportState((state == State::MachineState::Brewing));
 }

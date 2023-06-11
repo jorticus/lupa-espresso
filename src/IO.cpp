@@ -20,6 +20,7 @@ namespace IO {
 void onButtonPress(int pin) {
     switch (pin) {
         case 0: // POWER_BTN
+            Serial.println("PWR BTN PRESSED\n");
             bool pwr = (State::uiState == State::MachineState::Off  || State::uiState == State::MachineState::Sleep);
             State::setPowerControl(pwr);
             break;

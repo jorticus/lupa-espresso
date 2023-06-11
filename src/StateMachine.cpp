@@ -22,6 +22,7 @@ static unsigned long t_steam_start = 0;
 static bool power_state = true;
 
 static const char* UiState_Str[] = {
+    "Off",
     "Init",
     "Pre-Heat",
     "Ready",
@@ -59,6 +60,7 @@ static void printState(MachineState uiState) {
 }
 
 void resetIdleTimer() {
+    Serial.println("Reset idle timer\n");
     t_idle_start = millis();
 }
 
