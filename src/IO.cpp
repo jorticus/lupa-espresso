@@ -1,5 +1,6 @@
 #include <Arduino.h>
-#include "Machine.h"
+#include "IO.h"
+#include "StateMachine.h"
 #include "hardware.h"
 
 // Temporary: For lever pull detection
@@ -9,7 +10,7 @@
 static bool s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 
-namespace Machine {
+namespace IO {
 
 /// @brief Reset device into a fail-safe mode
 /// where any outputs are turned off.
@@ -45,7 +46,7 @@ bool isLeverPulled() {
 
     // Detect lever by measuring water flow
     return (
-        (UI::uiState != UI::UiState::Preheat) && 
+        (State::uiState != State::MachineState::Preheat) && 
         SensorSampler::isFlowRateValid() && 
         (SensorSampler::getFlowRate() > 1.0f)
     );

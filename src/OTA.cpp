@@ -1,8 +1,9 @@
 #include <Arduino.h>
 #include <ArduinoOTA.h>
 #include "Display.h"
-#include "Machine.h"
+#include "IO.h"
 #include "UI.h"
+#include "StateMachine.h"
 #include "secrets.h"
 
 using namespace Display;
@@ -83,8 +84,8 @@ void initOTA() {
 
 	ArduinoOTA.onStart([]() {
         // Put system into a safe state
-		Machine::failsafe();
-        UI::setState(UI::UiState::FirmwareUpdate);
+		IO::failsafe();
+        State::setState(State::MachineState::FirmwareUpdate);
         Display::setBrightness(1.0f);
 		Serial.println("OTA Initiated");
 
@@ -111,7 +112,7 @@ void initOTA() {
 		Serial.println();
 		Serial.printf("Error[%u]: ", error);
         
-        UI::setFault(UI::FaultState::FirmwareUpdateFailure);
+        State::setFault(State::FaultState::FirmwareUpdateFailure);
 
 		if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
 		else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");

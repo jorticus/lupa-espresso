@@ -1,7 +1,7 @@
 #pragma once
 
 /// @brief Interface for the machine's hardware
-namespace Machine {
+namespace IO {
 
     /// @brief Initialize GPIO
     void initGpio();

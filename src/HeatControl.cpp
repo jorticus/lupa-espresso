@@ -2,7 +2,7 @@
 #include "SensorSampler.h"
 #include "HeatControl.h"
 #include "PID.h"
-#include "Machine.h"
+#include "IO.h"
 #include "hardware.h"
 #include "config.h"
 
@@ -76,28 +76,28 @@ void processControlLoop()
     // 3. Steam : Heat 100% while pressure is low to maintain steam
 
     if (!SensorSampler::isTemperatureValid() || 
-        Machine::isWaterTankLow() || 
+        IO::isWaterTankLow() || 
         (operating_mode == Mode::Off))
     {
         // Turn off heat/pump/etc if we don't have a temperature reading
-        Machine::failsafe();
+        IO::failsafe();
     }
     else {
         float pid_input = SensorSampler::getTemperature();
 
         if (pid_input > MAX_BOILER_TEMPERATURE) {
-            Machine::setHeat(false);
-            Machine::setHeatPower(0.0f);
+            IO::setHeat(false);
+            IO::setHeatPower(0.0f);
             return;
         }
 
         // Not yet near the pid_setpoint, 100% duty until we get close
         if (pid_input < (pid_setpoint - PID_REGULATE_RANGE_TEMPERATURE)) {
-            if (Machine::getHeatPower() < 1.0f) {
+            if (IO::getHeatPower() < 1.0f) {
                 Serial.printf("PREHEAT: %.1f\n", pid_input);
             }
-            Machine::setHeat(true);
-            Machine::setHeatPower(1.0f);
+            IO::setHeat(true);
+            IO::setHeatPower(1.0f);
             return;
         }
         else {
@@ -126,13 +126,13 @@ void processControlLoop()
 
                 if (pid_output > 0.0) {
                     if (t_start == 0) {
-                        Machine::setHeatPower(pid_output * 0.01f);
+                        IO::setHeatPower(pid_output * 0.01f);
                         t_width = (unsigned long)(pid_output * (double)HEATER_PERIOD * 0.01);
                     }
                 }
                 else {
-                    Machine::setHeatPower(0.0);
-                    Machine::setHeat(false);
+                    IO::setHeatPower(0.0);
+                    IO::setHeat(false);
                 }
             }
 
@@ -143,7 +143,7 @@ void processControlLoop()
                 if ((t_width > HEATER_MIN_PERIOD) && (t_start == 0)) {
                     t_start = t_now;
                     Serial.printf("Heat: %d/%d\n", t_width, HEATER_PERIOD);
-                    Machine::setHeat(true);
+                    IO::setHeat(true);
                 }
             }
 
@@ -151,7 +151,7 @@ void processControlLoop()
             if ((t_start > 0) && ((t_now - t_start) > t_width)) {
                 // Keep heater on if at 100% duty
                 if (t_width < (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
-                    Machine::setHeat(false);
+                    IO::setHeat(false);
                 }
 
                 t_width = 0;

@@ -1,15 +1,17 @@
+#include <Arduino.h>
+#include "StateMachine.h"
+#include "Display.h"
+#include "IO.h"
 #include "UI.h"
-#include "Machine.h"
 #include "SensorSampler.h"
 #include "config.h"
 #include "HeatControl.h"
-#include "Machine.h"
 #include "HomeAssistant.h"
 
-namespace UI {
+namespace State {
 
-void uiFreezeGraphs(); // UI.cpp
-
+MachineState uiState = MachineState::Init;
+FaultState uiFault = FaultState::NoFault;
 BrewStats brewStats = {0};
 
 #define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
@@ -31,21 +33,21 @@ static const char* UiState_Str[] = {
     "Sleep",
 };
 
-void setState(UiState state) {
+void setState(MachineState state) {
     uiState = state;
 }
 
-UiState getState() {
+MachineState getState() {
     return uiState;
 }
 
 void setFault(FaultState state) {
-    uiState = UiState::Fault;
+    uiState = MachineState::Fault;
     uiFault = state;
 }
 
 
-static void printState(UiState uiState) {
+static void printState(MachineState uiState) {
     Serial.print("State: ");
     int s = (int)uiState;
     if (s < sizeof(UiState_Str)) {
@@ -64,20 +66,18 @@ void onStateChanged() {
 
     // Detect and handle sleep state
     switch (uiState) {
-        case UiState::Sleep:
+        case MachineState::Sleep:
             Display::setBrightness(CONFIG_IDLE_BRIGHTNESS);
             HeatControl::setMode(HeatControl::Mode::Sleep);
-
-            // TODO: Should we report sleep as ON or OFF?
-            //HomeAssistant::reportPowerControlState(true);
             break;
-        case UiState::Off:
+            
+        case MachineState::Off:
             Display::setBrightness(0.0f);
             Display::turnOff();
             HeatControl::setMode(HeatControl::Mode::Off);
-            Machine::failsafe();
-            //HomeAssistant::reportPowerControlState(false);
+            IO::failsafe();
             break;
+
         default:
             Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
 
@@ -86,7 +86,6 @@ void onStateChanged() {
                 heatMode == HeatControl::Mode::Off)
             {
                 HeatControl::setMode(HeatControl::Mode::Brew);
-                //HomeAssistant::reportPowerControlState(true);
             }
             break;
     }
@@ -98,13 +97,13 @@ void setPowerControl(bool pwr)
     Serial.println(pwr ? "ON" : "OFF");
 
     if (pwr) {
-        if (uiState == UiState::Off || uiState == UiState::Sleep) {
-            uiState = UiState::Preheat;
+        if (uiState == MachineState::Off || uiState == MachineState::Sleep) {
+            uiState = MachineState::Preheat;
             resetIdleTimer();
         }
     }
     else {
-        uiState = UiState::Off;
+        uiState = MachineState::Off;
     }
 
     // Force an update of state before returning to ensure
@@ -115,73 +114,73 @@ void setPowerControl(bool pwr)
 
 void processState()
 {
-    static UiState _lastUiState = UiState::Init;
+    static MachineState _lastUiState = MachineState::Init;
     if (uiState != _lastUiState) {
         _lastUiState = uiState;
         printState(uiState);
         onStateChanged();
     }
 
-    if (uiState == UiState::Off) {
+    if (uiState == MachineState::Off) {
         return;
     }
 
     // NOTE: Process faults first.
 
 /*
-    if (uiState != UiState::SensorTest && 
+    if (uiState != MachineState::SensorTest && 
         (!values.f_valid || !values.p_valid || !values.t_valid))
     {
         uiFault = FaultState::SensorFailure;
-        uiState = UiState::Fault;
+        uiState = MachineState::Fault;
         return;
     }
 */
 
     // If water tank is low at any point, indicate fault
-    if (Machine::isWaterTankLow()) {
+    if (IO::isWaterTankLow()) {
         uiFault = FaultState::LowWater;
-        uiState = UiState::Fault;
+        uiState = MachineState::Fault;
         return;
     }
 
-    if (uiState == UiState::Preheat) {
+    if (uiState == MachineState::Preheat) {
         // Device is ready once temperature rises above the configured threshold
         if (SensorSampler::isTemperatureValid()) {
             auto t = SensorSampler::getTemperature();
             // Up to sleeping temperature, go to sleep
             if (t > CONFIG_BOILER_SLEEP_TEMPERATURE_C && CONFIG_SLEEP_AFTER_PREHEAT) {
-                uiState = UiState::Sleep;
+                uiState = MachineState::Sleep;
             }
             // Close to boiler temperature, go to ready
             else if (t >= PREHEAT_TEMPERATURE_C) {
-                uiState = UiState::Ready;
+                uiState = MachineState::Ready;
                 resetIdleTimer();
             }
         }
     }
 
-    if (uiState == UiState::Fault) {
+    if (uiState == MachineState::Fault) {
         // If fault was low tank, and tank is no longer low, clear the fault
-        if (uiFault == FaultState::LowWater && !Machine::isWaterTankLow()) {
+        if (uiFault == FaultState::LowWater && !IO::isWaterTankLow()) {
             uiFault = FaultState::NoFault;
-            uiState = UiState::Ready;
+            uiState = MachineState::Ready;
             resetIdleTimer();
         }
     }
 
     // If lever is actuated at any time, move to brew phase.
-    if ((uiState != UiState::Brewing) && Machine::isLeverPulled()) {
-        if (uiState == UiState::Sleep) {
+    if ((uiState != MachineState::Brewing) && IO::isLeverPulled()) {
+        if (uiState == MachineState::Sleep) {
             // Wake from sleep, go to preheat if not yet hot enough
             if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() < PREHEAT_TEMPERATURE_C)) {
-                uiState = UiState::Preheat;
+                uiState = MachineState::Preheat;
                 resetIdleTimer();
                 return;
             }
         }
 
-        uiState = UiState::Brewing;
+        uiState = MachineState::Brewing;
         resetIdleTimer();
         auto t_now = millis();
 
@@ -201,12 +200,12 @@ void processState()
     }
 
     // If lever is released, stop brewing
-    if (uiState == UiState::Brewing && !Machine::isLeverPulled()) {
-        //uiState = UiState::PostBrew;
-        uiState = UiState::Ready;
+    if (uiState == MachineState::Brewing && !IO::isLeverPulled()) {
+        //uiState = MachineState::PostBrew;
+        uiState = MachineState::Ready;
         resetIdleTimer();
 
-        uiFreezeGraphs();
+        UI::uiFreezeGraphs();
 
         // Stop brew timer
         brewStats.end_brew_time = millis();
@@ -218,7 +217,7 @@ void processState()
         return;
     }
 
-    if (uiState == UiState::Ready) {
+    if (uiState == MachineState::Ready) {
 
         if ((brewStats.end_brew_time > 0) && 
             ((millis() - brewStats.end_brew_time) >= (unsigned long)CONFIG_BREW_FINISH_TIMEOUT_MS))
@@ -237,7 +236,7 @@ void processState()
         {
             // Go to sleep after idle timeout
             Serial.println("Idle timeout - going to sleep");
-            uiState = UiState::Sleep;
+            uiState = MachineState::Sleep;
         }
     }
 }

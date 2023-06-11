@@ -6,6 +6,7 @@
 #include "secrets.h"
 #include "UI.h"
 #include "SensorSampler.h"
+#include "StateMachine.h"
 //#include "version.h"
 
 // version.py
@@ -27,7 +28,7 @@ HAAvailabilityComponent availability(context);
 HAComponent<Component::Switch> switch_power(context, 
     "power", 
     "Power", 
-    UI::setPowerControl,
+    State::setPowerControl,
     "mdi:coffee"
 );
 
@@ -71,11 +72,11 @@ void HomeAssistant::init() {
 
 void reportState() {
     // State changed, report it...
-    auto state = UI::getState();
+    auto state = State::getState();
     
-    switch_power.setState((state != UI::UiState::Off));
+    switch_power.setState((state != State::MachineState::Off));
 
-    sensor_isbrewing.reportState((state == UI::UiState::Brewing));
+    sensor_isbrewing.reportState((state == State::MachineState::Brewing));
 }
 
 void onConnect() {
@@ -86,7 +87,7 @@ void onConnect() {
 void HomeAssistant::process() {
     static unsigned long t_last = 0;
     static unsigned long t_last_connect = 0;
-    static UI::UiState last_ui_state = UI::UiState::Init;
+    static State::MachineState last_ui_state = State::MachineState::Init;
 
     if (!client.connected()) {
         // Throttle reconnection attempts
@@ -107,7 +108,7 @@ void HomeAssistant::process() {
         }
     }
     else {
-        auto state = UI::getState();
+        auto state = State::getState();
         if (state != last_ui_state) {
             last_ui_state = state;
 
@@ -115,7 +116,7 @@ void HomeAssistant::process() {
         }
 
         // Use fast report rate when on, slow report rate when off
-        auto interval = (state != UI::UiState::Off) ?
+        auto interval = (state != State::MachineState::Off) ?
             sensor_sample_interval_ms : 
             slow_sensor_sample_interval;
 

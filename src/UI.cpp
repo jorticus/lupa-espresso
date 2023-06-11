@@ -1,11 +1,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "UI.h"
+#include "StateMachine.h"
 #include "UIWidgets.h"
 #include "Display.h"
 #include "SensorSampler.h"
 #include "HeatControl.h"
-#include "Machine.h"
+#include "IO.h"
 #include "value_array.h"
 #include "secrets.h"
 #include "config.h"
@@ -26,10 +27,8 @@ ValueArray<float, numSamples> flowSamplesFrozen;
 
 namespace UI {
 
+using namespace State;
 using namespace UI::Widgets;
-
-UiState uiState = UiState::Init;
-FaultState uiFault = FaultState::NoFault;
 
 void uiDrawStatusCircle(GfxCanvas& gfx);
 
@@ -52,13 +51,13 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
     const char* status_str = nullptr;
     uint32_t color = TFT_BLACK;
 
-    switch (uiState) {
-        case UiState::Init:
+    switch (State::getState()) {
+        case MachineState::Init:
             status_str = "INIT";
             color = TFT_BLUE;
             break;
 
-        case UiState::Preheat:
+        case MachineState::Preheat:
         {
             status_str = "WARMING UP";
             color = TFT_ORANGERED;
@@ -69,7 +68,7 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
             break;
         }
 
-        case UiState::Fault:
+        case MachineState::Fault:
         {
             switch (uiFault) {
                 case FaultState::LowWater:
@@ -99,7 +98,7 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
             break;
         }
 
-        case UiState::Ready:
+        case MachineState::Ready:
             // TODO: Connect the above pulse animation and relax back into an idle state
 
             //status_str = "READY";
@@ -107,7 +106,7 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
 
             break;
 
-        case UiState::Sleep:
+        case MachineState::Sleep:
             status_str = "ZzZz";
             color = TFT_DARKCYAN;
 
@@ -116,7 +115,7 @@ void uiDrawStatusCircle(GfxCanvas& gfx) {
 
             break;
 
-        case UiState::FirmwareUpdate:
+        case MachineState::FirmwareUpdate:
             status_str = "UPDATING";
             color = TFT_SKYBLUE;
             break;
@@ -147,7 +146,7 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
     const int32_t r = (TFT_WIDTH/2) - 40;
     int32_t x, y;
 
-    if (Machine::isHeaterOn()) {
+    if (IO::isHeaterOn()) {
         // TODO: Replace with heat icon
         uiGetRadialCoords(r, -45, &x, &y);
         gfx.fillCircle(x, y, 5, TFT_ORANGERED);
@@ -234,7 +233,7 @@ float getTemperatureMaxRange() {
     return 140.0f;
 }
 float getTemperatureMinRange() {
-    if ((uiState != UiState::Preheat) && (SensorSampler::getTemperature() >= 80.0f)) {
+    if ((uiState != MachineState::Preheat) && (SensorSampler::getTemperature() >= 80.0f)) {
         // Use smaller range when up to temperature
         return 80.0f;
     }
@@ -252,7 +251,7 @@ void uiRenderTemperatureGauge(GfxCanvas& gfx) {
 }
 
 void uiRenderHeaterPowerGauge(GfxCanvas& gfx) {
-    uiRenderGauge(gfx, Machine::getHeatPower(), TFT_YELLOW, 15);
+    uiRenderGauge(gfx, IO::getHeatPower(), TFT_YELLOW, 15);
 }
 
 void uiRenderFlowGauge(GfxCanvas& gfx) {
@@ -532,25 +531,25 @@ void render() {
 
 
     switch (uiState) {
-        case UiState::Preheat:
+        case MachineState::Preheat:
             uiRenderPreheat();
             uiRenderTemperatureLeft();
             break;
-        case UiState::Ready:
+        case MachineState::Ready:
             uiRenderReady();
             uiRenderTemperatureLeft();
             break;
-        case UiState::Brewing:
+        case MachineState::Brewing:
             uiRenderBrewing();
             uiRenderTemperatureLeft();
             break;
-        case UiState::Sleep:
+        case MachineState::Sleep:
             uiRenderTemperatureLeft();
             break;
-        case UiState::SensorTest:
+        case MachineState::SensorTest:
             uiRenderSensorTest();
             break;
-        // case UiState::PostBrew:
+        // case MachineState::PostBrew:
         //     uiRenderPostBrew();
         //     break;
         default:

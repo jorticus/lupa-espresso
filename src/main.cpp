@@ -1,21 +1,22 @@
-#include <array>
+//#include <array>
 #include <Arduino.h>
 //#include <Adafruit_GFX.h>
 //#include <Adafruit_GC9A01A.h>
 //#include <Arduino_GFX.h>
 #include <Wire.h>
-#include <Adafruit_SPIDevice.h>
+//#include <Adafruit_SPIDevice.h>
 #include <Adafruit_MAX31865.h>
 #include <WiFi.h>
 #include "secrets.h"
 #include "PressureTransducer.h"
-#include "PulseCounter.h"
-#include <TFT_eSPI.h>
+//#include "PulseCounter.h"
+//#include <TFT_eSPI.h>
 #include "config.h"
 #include "hardware.h"
-#include "value_array.h"
+//#include "value_array.h"
 #include "SensorSampler.h"
-#include "Machine.h"
+#include "IO.h"
+#include "StateMachine.h"
 #include "HeatControl.h"
 #include "Display.h"
 #include "UI.h"
@@ -53,7 +54,7 @@ void setup() {
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, LOW);
 
-    Machine::initGpio();
+    IO::initGpio();
     Display::initDisplay();
     Network::initWiFi();
     OTA::initOTA();
@@ -65,13 +66,13 @@ void setup() {
 
     SensorSampler::start();
     
-    UI::setState(UI::UiState::Preheat);
-    //UI::setState(UiState::SensorTest);
+    State::setState(State::MachineState::Preheat);
+    //State::setState(MachineState::SensorTest);
 
     // If sensors could not be initialized, indicate fault
-    if (UI::uiState != UI::UiState::SensorTest && (!isSensorsInitialized))
+    if (State::uiState != State::MachineState::SensorTest && (!isSensorsInitialized))
     {
-        UI::setFault(UI::FaultState::SensorFailure);
+        State::setFault(State::FaultState::SensorFailure);
         return;
     }
 
@@ -87,10 +88,10 @@ void loop()
         HomeAssistant::process();
     }
 
-    if (UI::uiState != UI::UiState::FirmwareUpdate && 
-        UI::uiState != UI::UiState::Off)
+    if (State::uiState != State::MachineState::FirmwareUpdate && 
+        State::uiState != State::MachineState::Off)
     {
-        UI::processState();
+        State::processState();
 
         HeatControl::processControlLoop();
 
