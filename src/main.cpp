@@ -83,6 +83,7 @@ void setup() {
 void loop()
 {
     OTA::handle();
+    IO::process();
 
     if (WiFi.status() == WL_CONNECTED) {
         HomeAssistant::process();

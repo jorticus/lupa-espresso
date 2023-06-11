@@ -138,21 +138,26 @@ void processState()
 */
 
     // If water tank is low at any point, indicate fault
+    // State {Any -> Fault}
     if (IO::isWaterTankLow()) {
         uiFault = FaultState::LowWater;
         uiState = MachineState::Fault;
         return;
     }
 
+
+    // State {Preheat -> Sleep|Ready}
     if (uiState == MachineState::Preheat) {
         // Device is ready once temperature rises above the configured threshold
         if (SensorSampler::isTemperatureValid()) {
             auto t = SensorSampler::getTemperature();
             // Up to sleeping temperature, go to sleep
+            // State {Preheat -> Sleep}
             if (t > CONFIG_BOILER_SLEEP_TEMPERATURE_C && CONFIG_SLEEP_AFTER_PREHEAT) {
                 uiState = MachineState::Sleep;
             }
             // Close to boiler temperature, go to ready
+            // State {Preheat -> Ready}
             else if (t >= PREHEAT_TEMPERATURE_C) {
                 uiState = MachineState::Ready;
                 resetIdleTimer();
@@ -162,9 +167,10 @@ void processState()
 
     if (uiState == MachineState::Fault) {
         // If fault was low tank, and tank is no longer low, clear the fault
+        // State {Fault -> Preheat}
         if (uiFault == FaultState::LowWater && !IO::isWaterTankLow()) {
             uiFault = FaultState::NoFault;
-            uiState = MachineState::Ready;
+            uiState = MachineState::Preheat;
             resetIdleTimer();
         }
     }
@@ -173,6 +179,7 @@ void processState()
     if ((uiState != MachineState::Brewing) && IO::isLeverPulled()) {
         if (uiState == MachineState::Sleep) {
             // Wake from sleep, go to preheat if not yet hot enough
+            // State {Sleep -> Preheat}
             if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() < PREHEAT_TEMPERATURE_C)) {
                 uiState = MachineState::Preheat;
                 resetIdleTimer();
@@ -180,6 +187,7 @@ void processState()
             }
         }
 
+        // State {Preheat|Ready -> Brewing}
         uiState = MachineState::Brewing;
         resetIdleTimer();
         auto t_now = millis();
@@ -200,6 +208,7 @@ void processState()
     }
 
     // If lever is released, stop brewing
+    // State {Brewing -> Ready}
     if (uiState == MachineState::Brewing && !IO::isLeverPulled()) {
         //uiState = MachineState::PostBrew;
         uiState = MachineState::Ready;
@@ -217,6 +226,7 @@ void processState()
         return;
     }
 
+    // State {Ready -> Ready|Sleep}
     if (uiState == MachineState::Ready) {
 
         if ((brewStats.end_brew_time > 0) && 

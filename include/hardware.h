@@ -7,11 +7,14 @@
 // Lever actuator input switch
 // High = Lever open
 // Low  = Lever closed or partially open
-#define PIN_IN_LEVER 23
+#define PIN_IN_LEVER -1
 
 // Water tank low switch
 // High = Water tank is low
 #define PIN_IN_WATER_LOW 22
+
+// Power button
+#define PIN_IN_POWER_BTN 23
 
 // Water flow pulse sensor input pin
 // 5V-24V
@@ -24,7 +27,7 @@
 // Boiler tank full sense
 // Used for auto-fill logic
 // High = Boiler is full
-#define PIN_IN_WATER_FULL 21
+#define PIN_IN_WATER_FULL -1
 
 //
 // Output GPIOs

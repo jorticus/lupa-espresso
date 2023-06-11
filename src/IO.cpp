@@ -2,6 +2,7 @@
 #include "IO.h"
 #include "StateMachine.h"
 #include "hardware.h"
+#include "button.h"
 
 // Temporary: For lever pull detection
 #include "UI.h"
@@ -10,7 +11,20 @@
 static bool s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 
+static Buttons<
+    Btn<PIN_IN_POWER_BTN, HIGH>
+> buttons;
+
 namespace IO {
+
+void onButtonPress(int pin) {
+    switch (pin) {
+        case 0: // POWER_BTN
+            bool pwr = (State::uiState == State::MachineState::Off  || State::uiState == State::MachineState::Sleep);
+            State::setPowerControl(pwr);
+            break;
+    }
+}
 
 /// @brief Reset device into a fail-safe mode
 /// where any outputs are turned off.
@@ -26,14 +40,21 @@ void initGpio() {
     // BOOT button used for debugging
     pinMode(0, INPUT);
 
+    pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
-    pinMode(PIN_IN_WATER_LOW, INPUT_PULLDOWN);
+    pinMode(PIN_IN_WATER_LOW, INPUT_PULLUP);
     pinMode(PIN_IN_WATER_FULL, INPUT_PULLDOWN);
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
 
+    buttons.onButtonPress(onButtonPress);
+
     failsafe();
+}
+
+void process() {
+    buttons.process();
 }
 
 bool isWaterTankLow() {

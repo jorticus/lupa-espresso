@@ -6,6 +6,9 @@ namespace IO {
     /// @brief Initialize GPIO
     void initGpio();
 
+    /// @brief Handle inputs
+    void process();
+
     /// @brief Put the machine into a safe configuration (heaters off, etc)
     void failsafe();
 
