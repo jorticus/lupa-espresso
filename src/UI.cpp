@@ -543,9 +543,6 @@ void render() {
         case MachineState::SensorTest:
             uiRenderSensorTest();
             break;
-        // case MachineState::PostBrew:
-        //     uiRenderPostBrew();
-        //     break;
         default:
             break;
     }

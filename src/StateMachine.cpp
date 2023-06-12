@@ -10,9 +10,9 @@
 
 namespace State {
 
-MachineState uiState = MachineState::Init;
-FaultState uiFault = FaultState::NoFault;
-BrewStats brewStats = {0};
+MachineState uiState    = MachineState::Init;
+FaultState uiFault      = FaultState::NoFault;
+BrewStats brewStats     = {0};
 
 #define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
 
@@ -28,7 +28,6 @@ static const char* UiState_Str[] = {
     "Ready",
     "Fault",
     "Brewing",
-    "Post-Brew",
     "Sensor Test",
     "Firmware Update",
     "Sleep",
@@ -139,12 +138,15 @@ void processState()
     }
 */
 
-    // If water tank is low at any point, indicate fault
-    // State {Any -> Fault}
-    if (IO::isWaterTankLow()) {
-        uiFault = FaultState::LowWater;
-        uiState = MachineState::Fault;
-        return;
+
+    // If water tank is low, indicate fault
+    // State {Ready|Preheat -> Fault}
+    if (uiState != MachineState::Off && uiState != MachineState::Brewing) {
+        if (IO::isWaterTankLow()) {
+            uiFault = FaultState::LowWater;
+            uiState = MachineState::Fault;
+            return;
+        }
     }
 
 
@@ -212,7 +214,6 @@ void processState()
     // If lever is released, stop brewing
     // State {Brewing -> Ready}
     if (uiState == MachineState::Brewing && !IO::isLeverPulled()) {
-        //uiState = MachineState::PostBrew;
         uiState = MachineState::Ready;
         resetIdleTimer();
 

@@ -16,12 +16,10 @@ namespace State {
         Ready,
         Fault,
         Brewing,
-        PostBrew,
         SensorTest,
         FirmwareUpdate,
         Sleep
     };
-
 
     enum class FaultState {
         NoFault,
