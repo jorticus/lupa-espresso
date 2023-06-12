@@ -11,7 +11,19 @@ namespace UI::Widgets {
 /// @param s String to print
 /// @param y Vertical position
 /// @param color Color of text
+void uiRenderLabelCentered(GfxCanvas& gfx, int16_t y, uint16_t color, const char* s);
+
+// For compatibility
 void uiRenderLabelCentered(GfxCanvas& gfx, const char* s, int16_t y, uint16_t color = TFT_WHITE);
+
+/// @brief Render a horizontally-centered label
+/// @param gfx Canvas
+/// @param y Vertical position
+/// @param color Color of text
+/// @param fmt Formatter
+/// @param Args...
+void uiRenderLabelFormattedCentered(GfxCanvas& gfx, int16_t y, uint16_t color, const char* fmt, ...);
+
 
 /// @brief Render a circular gauge
 /// @param gfx Canvas

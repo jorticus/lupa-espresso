@@ -334,6 +334,28 @@ float SensorSampler::getTemperature() {
     return value_temperature;
 }
 
+float SensorSampler::getEstimatedGroupheadTemperature() {
+    if (!is_valid_temperature) {
+        return 0.0f;
+    }
+    
+    float t = value_temperature;
+    if (t < 90.0f) {
+        // Correction doesn't work in this range, 
+        // switch to approximate linear correction
+        return t * 0.8008f;
+    }
+    else {
+        // Polynomial correction based on real measurements between
+        // boiler and grouphead temperature.
+        // NOTE: Real temperatures fluctuate a lot, so this is 
+        // only an approximation.
+        //return (t*t*0.0921f) - (t*21.614f) + 1363.7f;
+        // =(D40*D40*0.0163)-(D40*3.2351)+250
+        return (t*t*0.0163f) - (t*3.2351f) + 250.0f;
+    }
+}
+
 float SensorSampler::getPressure() {
     return value_pressure;
 }

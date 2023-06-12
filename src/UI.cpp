@@ -11,6 +11,7 @@
 #include "value_array.h"
 #include "secrets.h"
 #include "config.h"
+#include "hardware.h"
 
 using namespace Display;
 
@@ -21,17 +22,19 @@ extern ValueArray<float, numSamples> temperatureSamples;
 extern ValueArray<float, numSamples> pressureSamples;
 extern ValueArray<float, numSamples> flowSamples;
 
+// Shadow copy of above sample arrays so we can freeze the sensor data
 ValueArray<float, numSamples> pressureSamplesFrozen;
 ValueArray<float, numSamples> flowSamplesFrozen;
 
-
+const uint16_t COLOUR_BOILER_T = TFT_RED;
+const uint16_t COLOUR_PRESSURE = TFT_DARKGREEN;
+const uint16_t COLOUR_BOILER_POWER = TFT_YELLOW;
+const uint16_t COLOUR_FLOW_RATE = TFT_RGB656(100,100,235); // Blue
 
 namespace UI {
 
 using namespace State;
 using namespace UI::Widgets;
-
-void uiDrawStatusCircle(GfxCanvas& gfx);
 
 
 void uiFreezeGraphs() {
@@ -44,114 +47,15 @@ void uiFreezeGraphs() {
 }
 
 
-void uiDrawStatusCircle(GfxCanvas& gfx) {
-    uint32_t ring_w = 10;
-    unsigned long t = millis();
-
-
-    const char* status_str = nullptr;
-    uint32_t color = TFT_BLACK;
-
-    switch (State::getState()) {
-        case MachineState::Init:
-            status_str = "INIT";
-            color = TFT_BLUE;
-            break;
-
-        case MachineState::Preheat:
-        {
-            status_str = "WARMING UP";
-            color = TFT_ORANGERED;
-
-            // Pulse animation
-            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
-
-            break;
-        }
-
-        case MachineState::Fault:
-        {
-            switch (uiFault) {
-                case FaultState::LowWater:
-                    status_str = "FILL WATER";
-                    break;
-                case FaultState::NotHeating:
-                    status_str = "NOT HEATING";
-                    break;
-                case FaultState::OverTemp:
-                    status_str = "OVER TEMP";
-                    break;
-                case FaultState::SensorFailure:
-                    status_str = "SENSOR FAILURE";
-                    break;
-                case FaultState::FirmwareUpdateFailure:
-                    status_str = "UPDATE FAILED";
-                    break;
-                default:
-                    status_str = "FAULT";
-                    break;
-            }
-
-            // Flash animation
-            float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
-            int16_t c = f*f*255.0f;
-            color = TFT_RGB656(c, 0, 0);
-            break;
-        }
-
-        case MachineState::Ready:
-            // TODO: Connect the above pulse animation and relax back into an idle state
-
-            //status_str = "READY";
-            //color = TFT_DARKGREEN;
-
-            break;
-
-        case MachineState::Sleep:
-            status_str = "ZzZz";
-            color = TFT_DARKCYAN;
-
-            // Pulse animation
-            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
-
-            break;
-
-        case MachineState::FirmwareUpdate:
-            status_str = "UPDATING";
-            color = TFT_SKYBLUE;
-            break;
-
-        default:
-            return;
-    }
-
-    if (color != TFT_BLACK) {
-        gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
-    }
-
-    if (status_str != nullptr) {
-        int16_t tw = gfx.textWidth(status_str);
-        int16_t th = 14;
-        gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
-        gfx.print(status_str);
-    }
-}
-
 void uiGetRadialCoords(int32_t r, float angle, int32_t *x, int32_t *y) {
     angle = 180 + angle;
     *x = (TFT_WIDTH/2)  + (r * -sinf(angle * deg2rad));
     *y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
 }
 
-void uiRenderStatusIcons(GfxCanvas& gfx) {
+void uiRenderWiFiStatus(GfxCanvas& gfx) {
     const int32_t r = (TFT_WIDTH/2) - 40;
     int32_t x, y;
-
-    if (IO::isHeaterOn()) {
-        // TODO: Replace with heat icon
-        uiGetRadialCoords(r, -45, &x, &y);
-        gfx.fillCircle(x, y, 5, TFT_ORANGERED);
-    }
 
     // WiFi connection indicator
     // TODO: Replace with WiFi icons
@@ -189,9 +93,23 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
 
     uiGetRadialCoords(r, 22, &x, &y);
     gfx.fillCircle(x, y, 5, wifiColor);
+}
 
+void uiRenderStatusIcons(GfxCanvas& gfx) {
+    const int32_t r = (TFT_WIDTH/2) - 40;
+    int32_t x, y;
 
+    // Boiler heater indicator
+    if (IO::isHeaterOn()) {
+        // TODO: Replace with heat icon
+        uiGetRadialCoords(r, -45, &x, &y);
+        gfx.fillCircle(x, y, 5, TFT_ORANGERED);
+    }
 
+    // WiFi connection status
+    uiRenderWiFiStatus(gfx);
+
+    // Boiler heat mode
     uint32_t color = TFT_BLACK;
     auto mode = HeatControl::getMode();
     switch (mode) {
@@ -209,18 +127,17 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
     gfx.fillCircle(x, y, 5, color);
 }
 
-void uiRenderMargin() {
-    // uint32_t margin = 5;
-    // uint32_t ring_w = 10 + margin;
-    // gfx_right.drawArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, TFT_BLACK, TFT_BLACK, false);
-}
-
 void uiRenderPressureGauge(GfxCanvas& gfx) {
-     //float value_norm = (values.t - 15.0f) / (25.0f - 15.0f);
     float min_pressure = 1.0f; // Ambient air pressure
-    float max_pressure = 12.0f;
+    float max_pressure = PRESSURE_MAX_BAR;
     float value_norm = (SensorSampler::getPressure() - min_pressure) / (max_pressure - min_pressure);
-    uiRenderGauge(gfx, value_norm, TFT_DARKGREEN);
+    uiRenderGauge(gfx, value_norm, COLOUR_PRESSURE);
+
+    uiRenderLabelFormattedCentered(gfx,
+        60,
+        TFT_WHITE,
+        (SensorSampler::isPressureValid() ? "%.2f Bar" : "- Bar"),
+        SensorSampler::getPressure());
 }
 
 float getTemperatureMaxRange() {
@@ -241,26 +158,20 @@ void uiRenderTemperatureGauge(GfxCanvas& gfx) {
     float min_temp = getTemperatureMinRange();
     float max_temp = getTemperatureMaxRange();
     float value_norm = (temperature - min_temp) / (max_temp - min_temp);
-    uiRenderGauge(gfx, value_norm, TFT_RED);
+    uiRenderGauge(gfx, value_norm, COLOUR_BOILER_T);
 }
 
 void uiRenderHeaterPowerGauge(GfxCanvas& gfx) {
-    uiRenderGauge(gfx, IO::getHeatPower(), TFT_YELLOW, 15);
+    uiRenderGauge(gfx, IO::getHeatPower(), COLOUR_BOILER_POWER, 15);
 }
 
 void uiRenderFlowGauge(GfxCanvas& gfx) {
     float flow = SensorSampler::getFlowRate();
     float min_flow = 0.0f;
-    float max_flow = 10.0f;
+    float max_flow = FLOW_MAX_VALUE;
     float value_norm = (flow - min_flow) / (max_flow - min_flow);
-    uiRenderGauge(gfx, value_norm, TFT_SKYBLUE, 15);
+    uiRenderGauge(gfx, value_norm, COLOUR_FLOW_RATE, 15);
 }
-
-unsigned long t_last = 0;
-
-
-
-
 
 void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
     float min_value = getTemperatureMinRange();
@@ -271,251 +182,232 @@ void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
 void uiRenderBrewGraph(GfxCanvas& gfx, bool freeze = false) {
     {
         float min_value = 0.0f;
-        float max_value = 12.0f;
+        float max_value = PRESSURE_MAX_BAR;
         auto& samples = (freeze) ? pressureSamplesFrozen : pressureSamples;
 
-        uiRenderGraph(gfx, samples, min_value, max_value, TFT_DARKGREEN);
+        uiRenderGraph(gfx, samples, min_value, max_value, COLOUR_PRESSURE);
     }
 
     {
         float min_value = 0.0f;
-        float max_value = 10.0f;
+        float max_value = FLOW_MAX_VALUE;
         auto& samples = (freeze) ? flowSamplesFrozen : flowSamples;
 
-        uiRenderGraph(gfx, samples, min_value, max_value, TFT_SKYBLUE);
+        uiRenderGraph(gfx, samples, min_value, max_value, COLOUR_FLOW_RATE);
     }
 }
 
-float calculateEstimatedGroupheadTemp(float t) {
-    if (t < 90.0f) {
-        // Correction doesn't work in this range, 
-        // switch to approximate linear correction
-        return t * 0.8008f;
-    }
-    else {
-        // Polynomial correction based on real measurements between
-        // boiler and grouphead temperature.
-        // NOTE: Real temperatures fluctuate a lot, so this is 
-        // only an approximation.
-        //return (t*t*0.0921f) - (t*21.614f) + 1363.7f;
-        // =(D40*D40*0.0163)-(D40*3.2351)+250
-        return (t*t*0.0163f) - (t*3.2351f) + 250.0f;
-    }
-}
-
-void uiRenderTemperatureLeft()
+void uiRenderPostBrewScreen(GfxCanvas& gfx)
 {
-    uiRenderTemperatureGraph(gfx_left);
+    // Display snapshot of last brew graph
+    uiRenderBrewGraph(gfx, true);
 
-    float t_boiler = SensorSampler::getTemperature();
+    float brewTimeSec = (brewStats.end_brew_time - brewStats.start_brew_time) / 1000.0f;
 
-    // Render current temperature
-    {
-        char buffer[20];
-        if (SensorSampler::isTemperatureValid() && (t_boiler > 20.0f)) {
-            snprintf(buffer, sizeof(buffer), "%.2f C", t_boiler);
-        } else {
-            snprintf(buffer, sizeof(buffer), "- C");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
+    int16_t y = (-(TFT_HEIGHT/2) + 60);
+    uiRenderLabelCentered(gfx, y, TFT_WHITE, "BREW TIME:");
 
-        uiRenderLabelCentered(gfx_left, buffer, (TFT_HEIGHT/2 - 60));
-    }
-
-    // Estimated grouphead temperature
-    {
-        char buffer[20];
-        if (SensorSampler::isTemperatureValid() && (t_boiler > 100.0f)) {
-            float t = calculateEstimatedGroupheadTemp(t_boiler);
-            // NOTE: No decimal places as the estimation is only accurate to
-            // within a few degrees C anyway, don't want to give the illusion
-            // of accuracy.
-            snprintf(buffer, sizeof(buffer), "%.0f C", t);
-        } else {
-            snprintf(buffer, sizeof(buffer), "- C");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
-
-        uiRenderLabelCentered(gfx_left, buffer, (TFT_HEIGHT/2 - 30));
-    }
-
-    uiRenderTemperatureGauge(gfx_left);
-    uiRenderHeaterPowerGauge(gfx_left);
-    uiRenderStatusIcons(gfx_left);
+    y += 30;
+    uiRenderLabelFormattedCentered(gfx, y, TFT_WHITE, "%.1f", brewTimeSec);
 }
 
-void uiRenderPreheat()
+void uiRenderReadyScreen(GfxCanvas& gfx)
 {
-
+    uiRenderLabelCentered(gfx, "READY", 0);
+    //uiRenderBrewGraph(gfx_right);
 }
 
-void uiRenderReady()
-{
-    // Left Display:
-    //     - Temperature Gauge & Graph ??
-    // Right Display:
-    //     - Green ring indicating "ready"
+void uiRenderBrewingScreen(GfxCanvas& gfx) {
 
-    if (brewStats.start_brew_time > 0) {
-        // Left Display:
-        //     - Pressure & flow chart
-        //     - Average pressure & flow
-        //     - Average temperature
-        // Right Display:
-        //     - Final time
-        //     - mL delivered
+    uiRenderLabelCentered(gfx, 0, TFT_WHITE, "BREWING");
 
-        // Display snapshot of last brew graph
-        uiRenderBrewGraph(gfx_right, true);
+    float brewTimeSec = (millis() - brewStats.start_brew_time) / 1000.0f;
+    uiRenderLabelFormattedCentered(gfx, 
+        20, 
+        TFT_WHITE,
+        "%.1f", 
+        brewTimeSec);
 
-        float brewTimeSec = (brewStats.end_brew_time - brewStats.start_brew_time) / 1000.0f;
-        char buffer[20];
-        snprintf(buffer, sizeof(buffer), "%.1f", brewTimeSec);
-        buffer[sizeof(buffer)-1] = '\0';
+    uiRenderLabelFormattedCentered(gfx, 
+        60, 
+        TFT_WHITE,
+        (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"), 
+        SensorSampler::getPressure());
 
-        uiRenderLabelCentered(gfx_right, "BREW TIME:", (-(TFT_HEIGHT/2) + 60));
-        uiRenderLabelCentered(gfx_right, buffer,  (-(TFT_HEIGHT/2) + 90));
-    }
-    else {
-        //uiRenderLabelCentered(gfx_right, "READY", 0);
-        
-        uiRenderBrewGraph(gfx_right);
-    }
-
-    uiRenderPressureGauge(gfx_right);
-    uiRenderFlowGauge(gfx_right);
-
-    {
-        // Render pressure label
-        char buffer[20];
-        if (SensorSampler::isPressureValid()) {
-            snprintf(buffer, sizeof(buffer), "%.2f Bar", SensorSampler::getPressure());
-        } else {
-            snprintf(buffer, sizeof(buffer), "- Bar");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
-
-        // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, 60);
-    }
+    // {
+    //     const char* status_str = "BREWING";
+    //     int16_t tw = gfx.textWidth(status_str);
+    //     int16_t th = 14;
+    //     gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
+    //     gfx.print(status_str);
+    // }
 }
 
-void uiRenderBrewing() {
-    // Left Display:
-    //     - Pressure Gauge
-    //     - Pressure & flow chart
-    //     - Warnings: 
-    //       - Channeling detected (flow vs pressure)
-    //       - Pressure too low
-    //       - Flow too low
-    //       - Flow too high
-    // Right Display:
-    //     - Timer, in center
-    //     - Phase (Soak, Pre-Infusion, Extract)
-
-    uiRenderBrewGraph(gfx_right);
-    uiRenderMargin();
-
-    {
-        const char* status_str = "BREWING";
-        int16_t tw = gfx_right.textWidth(status_str);
-        int16_t th = 14;
-        gfx_right.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
-        gfx_right.print(status_str);
-    }
-
-    {
-        // Render timer
-        float brewTimeSec = (millis() - brewStats.start_brew_time) / 1000.0f;
-        char buffer[20];
-        snprintf(buffer, sizeof(buffer), "%.1f", brewTimeSec);
-        buffer[sizeof(buffer)-1] = '\0';
-
-        // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, 20);
-    }
-
-    {
-        // Render pressure
-        char buffer[20];
-        if (SensorSampler::isPressureValid()) {
-            snprintf(buffer, sizeof(buffer), "%.2f Bar", SensorSampler::getPressure());
-        } else {
-            snprintf(buffer, sizeof(buffer), "- Bar");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
-
-        uiRenderLabelCentered(gfx_right, buffer, 60);
-    }
-
-    uiRenderPressureGauge(gfx_right);
-    uiRenderFlowGauge(gfx_right);
-    uiRenderTemperatureGauge(gfx_left);
-}
-
+/// @brief Render sensors for debugging
 void uiRenderSensorTest()
 {
     uiRenderTemperatureGraph(gfx_left, TFT_RED);
     uiRenderBrewGraph(gfx_right);
 
-    {
-        char buffer[20];
-        if (SensorSampler::isPressureValid()) {
-            snprintf(buffer, sizeof(buffer), "%.2f Bar", SensorSampler::getPressure());
-        } else {
-            snprintf(buffer, sizeof(buffer), "- Bar");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
+    uiRenderLabelFormattedCentered(gfx_right, 
+        -60,
+        TFT_DARKGREEN,
+        (SensorSampler::isPressureValid() ? "%.2f Bar" : "- Bar"),
+        SensorSampler::getPressure());
 
-        // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, -60, TFT_DARKGREEN);
-    }
+    uiRenderLabelFormattedCentered(gfx_right, 
+        -30,
+        TFT_SKYBLUE,
+        (SensorSampler::isFlowRateValid() ? "%.1f /s" : "- /s"),
+        SensorSampler::getFlowRate());
 
-    {
-        char buffer[20];
-        if (SensorSampler::isFlowRateValid()) {
-            snprintf(buffer, sizeof(buffer), "%.1f /s", SensorSampler::getFlowRate());
-        } else {
-            snprintf(buffer, sizeof(buffer), "- /s");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
-
-        // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, -30, TFT_SKYBLUE);
-    }
-
-
-    {
-        char buffer[20];
-        if (SensorSampler::isFlowRateValid()) {
-            snprintf(buffer, sizeof(buffer), "%.1f mL", SensorSampler::getTotalFlowVolume());
-        } else {
-            snprintf(buffer, sizeof(buffer), "- mL");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
-
-        // Place below the status label
-        uiRenderLabelCentered(gfx_right, buffer, 0, TFT_DARKCYAN);
-    }
-
-    {
-        char buffer[20];
-        if (SensorSampler::isTemperatureValid()) {
-            snprintf(buffer, sizeof(buffer), "%.1f C", SensorSampler::getTemperature());
-        } else {
-            snprintf(buffer, sizeof(buffer), "- C");
-        }
-        buffer[sizeof(buffer)-1] = '\0';
-
-        // Place below the status label
-        uiRenderLabelCentered(gfx_left, buffer, 0, TFT_RED);
-    }
+    uiRenderLabelFormattedCentered(gfx_right, 
+        0,
+        TFT_DARKCYAN,
+        (SensorSampler::isFlowRateValid() ? "%.1f mL" : "- mL"),
+        SensorSampler::getTotalFlowVolume());
 
     uiRenderPressureGauge(gfx_right);
     uiRenderFlowGauge(gfx_right);
+
+    uiRenderLabelFormattedCentered(gfx_left, 
+        0,
+        TFT_RED,
+        (SensorSampler::isFlowRateValid() ? "%.2f C" : "- C"),
+        SensorSampler::getTotalFlowVolume());
+
     uiRenderTemperatureGauge(gfx_left);
 }
 
+/// @brief Render the left UI
+void renderLeft() {
+    auto& gfx = gfx_left;
+
+    uiRenderTemperatureGraph(gfx);
+
+    float t_boiler = SensorSampler::getTemperature();
+
+    // Render current temperature
+    bool is_t_valid = SensorSampler::isTemperatureValid() && (t_boiler > 20.0f);
+    uiRenderLabelFormattedCentered(gfx,
+        (TFT_HEIGHT/2 - 60),
+        TFT_WHITE,
+        (is_t_valid ? "%.2f C" : "- C"), 
+        t_boiler);
+
+    // Estimated grouphead temperature
+    bool is_est_valid = SensorSampler::isTemperatureValid() && (t_boiler > 100.0f);
+    if (is_est_valid) {
+        float t_estimated = SensorSampler::getEstimatedGroupheadTemperature();
+        uiRenderLabelFormattedCentered(gfx,
+            (TFT_HEIGHT/2 - 30),
+            TFT_WHITE,
+            "%.0f C",
+            t_estimated);
+    }
+
+    uiRenderTemperatureGauge(gfx);
+    uiRenderHeaterPowerGauge(gfx);
+    uiRenderStatusIcons(gfx);
+}
+
+void uiRenderStatusRing(GfxCanvas& gfx, const char* message, uint16_t color, float ring_w) {
+    if (color != TFT_BLACK) {
+        gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
+    }
+
+    if (message != nullptr) {
+        int16_t tw = gfx.textWidth(message);
+        int16_t th = 14;
+        gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
+        gfx.print(message);
+    }
+}
+
+/// @brief Render the right UI
+void renderRight() {
+    auto& gfx = gfx_right;
+
+    uint32_t ring_w = 10;
+    unsigned long t = millis();
+    const char* status_str = nullptr;
+    uint32_t color = TFT_BLACK;
+
+    // Render UI elements for the current state
+    switch (uiState) {
+        case MachineState::Init:
+            uiRenderStatusRing(gfx, "INIT", TFT_BLUE, ring_w);
+            break;
+
+        case MachineState::Preheat:
+            // Pulse animation
+            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            uiRenderStatusRing(gfx, "WARMING UP", TFT_ORANGERED, ring_w);
+            break;
+
+        case MachineState::Fault:
+        {
+            switch (uiFault) {
+                case FaultState::LowWater:
+                    status_str = "FILL WATER";
+                    break;
+                case FaultState::NotHeating:
+                    status_str = "NOT HEATING";
+                    break;
+                case FaultState::OverTemp:
+                    status_str = "OVER TEMP";
+                    break;
+                case FaultState::SensorFailure:
+                    status_str = "SENSOR FAILURE";
+                    break;
+                case FaultState::FirmwareUpdateFailure:
+                    status_str = "UPDATE FAILED";
+                    break;
+                default:
+                    status_str = "FAULT";
+                    break;
+
+                // Flash animation
+                float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
+                int16_t c = f*f*255.0f;
+                color = TFT_RGB656(c, 0, 0);
+
+                uiRenderStatusRing(gfx, status_str, color, ring_w);
+                break;
+            }
+        }
+
+        case MachineState::Ready:
+            if (brewStats.start_brew_time > 0) {
+                // Show post-brew snapshot graph + brew time
+                uiRenderPostBrewScreen(gfx);
+            }
+            else {
+                uiRenderBrewGraph(gfx);
+                uiRenderReadyScreen(gfx);
+            }
+
+            uiRenderPressureGauge(gfx);
+            uiRenderFlowGauge(gfx);
+            break;
+
+        case MachineState::Brewing:
+            uiRenderBrewGraph(gfx);
+            uiRenderBrewingScreen(gfx);
+            
+            uiRenderPressureGauge(gfx);
+            uiRenderFlowGauge(gfx);
+            break;
+
+        case MachineState::Sleep:
+
+            // Pulse animation
+            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+
+            uiRenderStatusRing(gfx, "ZzZz", TFT_DARKCYAN, ring_w);
+            break;
+    }
+}
 
 void render() {
     auto t1 = millis();
@@ -523,31 +415,13 @@ void render() {
     gfx_left.fillSprite(TFT_BLACK);
     gfx_right.fillSprite(TFT_BLACK);
 
-
-    switch (uiState) {
-        case MachineState::Preheat:
-            uiRenderPreheat();
-            uiRenderTemperatureLeft();
-            break;
-        case MachineState::Ready:
-            uiRenderReady();
-            uiRenderTemperatureLeft();
-            break;
-        case MachineState::Brewing:
-            uiRenderBrewing();
-            uiRenderTemperatureLeft();
-            break;
-        case MachineState::Sleep:
-            uiRenderTemperatureLeft();
-            break;
-        case MachineState::SensorTest:
-            uiRenderSensorTest();
-            break;
-        default:
-            break;
+    if (uiState == MachineState::SensorTest) {
+        uiRenderSensorTest();
+        return;
     }
 
-    uiDrawStatusCircle(gfx_right);
+    renderLeft();
+    renderRight();
 
     auto t2 = millis();
 

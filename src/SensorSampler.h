@@ -22,6 +22,11 @@ namespace SensorSampler {
     /// @return Temperature, in degC
     float getTemperature();
 
+    /// @brief Estimated grouphead temperature,
+    /// derived from the boiler temperature.
+    /// @return Temperature, in degC
+    float getEstimatedGroupheadTemperature();
+
     /// @brief Current grouphead pressure
     /// @return Pressure, in Bar
     float getPressure();
