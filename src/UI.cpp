@@ -366,15 +366,15 @@ void renderRight() {
                 default:
                     status_str = "FAULT";
                     break;
-
-                // Flash animation
-                float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
-                int16_t c = f*f*255.0f;
-                color = TFT_RGB656(c, 0, 0);
-
-                uiRenderStatusRing(gfx, status_str, color, ring_w);
-                break;
             }
+
+            // Flash animation
+            float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
+            int16_t c = f*f*255.0f;
+            color = TFT_RGB656(c, 0, 0);
+
+            uiRenderStatusRing(gfx, status_str, color, ring_w);
+            break;
         }
 
         case MachineState::Ready:
