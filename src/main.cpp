@@ -90,13 +90,13 @@ void loop()
         HomeAssistant::process();
     }
 
+    State::processState();
+
     if (State::uiState != State::MachineState::FirmwareUpdate && 
         State::uiState != State::MachineState::Off)
     {
-        State::processState();
-
         HeatControl::processControlLoop();
-
-        UI::render();
     }
+
+    UI::render();
 }

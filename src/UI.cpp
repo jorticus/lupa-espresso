@@ -311,7 +311,7 @@ void renderLeft() {
     uiRenderStatusIcons(gfx);
 }
 
-void uiRenderStatusRing(GfxCanvas& gfx, const char* message, uint16_t color, float ring_w) {
+void uiRenderStatusRing(GfxCanvas& gfx, const char* message, uint16_t color, uint32_t ring_w) {
     if (color != TFT_BLACK) {
         gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ring_w, 0, 360, color, TFT_BLACK);
     }
@@ -328,10 +328,12 @@ void uiRenderStatusRing(GfxCanvas& gfx, const char* message, uint16_t color, flo
 void renderRight() {
     auto& gfx = gfx_right;
 
-    uint32_t ring_w = 10;
+    const uint32_t ring_w_min = 10;
+
+    static uint32_t ring_w = ring_w_min;
+
     unsigned long t = millis();
     const char* status_str = nullptr;
-    uint32_t color = TFT_BLACK;
 
     // Render UI elements for the current state
     switch (uiState) {
@@ -341,7 +343,7 @@ void renderRight() {
 
         case MachineState::Preheat:
             // Pulse animation
-            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            ring_w = ring_w_min + 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
             uiRenderStatusRing(gfx, "WARMING UP", TFT_ORANGERED, ring_w);
             break;
 
@@ -371,13 +373,18 @@ void renderRight() {
             // Flash animation
             float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
             int16_t c = f*f*255.0f;
-            color = TFT_RGB656(c, 0, 0);
+            uint16_t color = TFT_RGB656(c, 0, 0);
 
             uiRenderStatusRing(gfx, status_str, color, ring_w);
             break;
         }
 
         case MachineState::Ready:
+            // Connect animation from Brewing phase
+            if (ring_w > ring_w_min) {
+                ring_w = ring_w_min + 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            }
+
             if (brewStats.start_brew_time > 0) {
                 // Show post-brew snapshot graph + brew time
                 uiRenderPostBrewScreen(gfx);
@@ -409,19 +416,138 @@ void renderRight() {
     }
 }
 
+const uint32_t anim_steps = 10;
+static uint32_t startup_anim = anim_steps;
+static uint32_t power_off_anim = 0;
+
+void triggerAnimation(Anim anim) {
+    switch (anim) {
+        case Anim::PowerOff:
+            Serial.println("Anim: Power Off");
+            power_off_anim = anim_steps;
+            break;
+
+        case Anim::PowerOn:
+            Serial.println("Anim: Power On");
+            startup_anim = anim_steps;
+            break;
+    }
+}
+
+void uiRenderGlobalAnimations() {
+    
+    if (startup_anim > 0) {
+        startup_anim--;
+
+        if (startup_anim == 0) {
+            Display::setBrightness(1.0f);
+            return;
+        }
+
+        float b = 1.0f - ((float)(startup_anim) / (float)anim_steps);
+        Display::setBrightness(b * 0.5f);
+
+//Experimental growing ring animation
+#if false
+        const uint32_t steps = anim_steps / 2;
+        const uint32_t w = (TFT_WIDTH/2);
+
+        if (startup_anim > steps) {
+            uint32_t r = w - (((startup_anim-steps) * w) / steps);
+            gfx_left.fillSmoothCircle(
+                (TFT_WIDTH/2),
+                (TFT_HEIGHT/2),
+                r,
+                TFT_SKYBLUE,
+                TFT_BLACK
+            );
+            gfx_right.fillSmoothCircle(
+                (TFT_WIDTH/2),
+                (TFT_HEIGHT/2),
+                r,
+                TFT_SKYBLUE,
+                TFT_BLACK
+            );
+
+            // float b = 1.0f - ((float)(startup_anim-steps) / (float)steps);
+            // Display::setBrightness(b * 0.2f);
+        }
+        else {
+            uint32_t r = w - (((startup_anim) * w) / steps);
+            gfx_left.drawSmoothArc(
+                (TFT_WIDTH/2),
+                (TFT_HEIGHT/2),
+                w, r,
+                0, 360,
+                TFT_SKYBLUE,
+                TFT_BLACK
+            );
+            gfx_right.drawSmoothArc(
+                (TFT_WIDTH/2),
+                (TFT_HEIGHT/2),
+                w, r,
+                0, 360,
+                TFT_SKYBLUE,
+                TFT_BLACK
+            );
+        }
+#endif
+
+        return;
+    }
+
+    if (power_off_anim > 0) {
+        power_off_anim--;
+
+        if (power_off_anim == 0) {
+            Display::setBrightness(0.0f);
+            Display::turnOff();
+            return;
+        }
+
+        float b = ((float)(power_off_anim) / (float)anim_steps);
+        Display::setBrightness(b * 0.5f);
+
+#if false
+        const uint32_t w = (TFT_WIDTH/2);
+        uint32_t r = w - (((power_off_anim) * w) / anim_steps);
+        gfx_left.fillSmoothCircle(
+            (TFT_WIDTH/2),
+            (TFT_HEIGHT/2),
+            r,
+            TFT_BLACK,
+            TFT_BLACK
+        );
+        gfx_right.fillSmoothCircle(
+            (TFT_WIDTH/2),
+            (TFT_HEIGHT/2),
+            r,
+            TFT_BLACK,
+            TFT_BLACK
+        );
+#endif
+        return;
+    }
+}
+
 void render() {
     auto t1 = millis();
+
+    if (uiState == MachineState::Off && power_off_anim == 0) {
+        return;
+    }
 
     gfx_left.fillSprite(TFT_BLACK);
     gfx_right.fillSprite(TFT_BLACK);
 
     if (uiState == MachineState::SensorTest) {
         uiRenderSensorTest();
-        return;
     }
 
     renderLeft();
     renderRight();
+
+    uiRenderGlobalAnimations();
 
     auto t2 = millis();
 

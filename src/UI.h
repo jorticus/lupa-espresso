@@ -11,8 +11,15 @@
 /// @brief UI state and rendering
 namespace UI {
 
+    enum class Anim {
+        PowerOn,
+        PowerOff
+    };
+
     /// @brief Render UI to the left & right canvas and update the display.
     void render();
 
     void uiFreezeGraphs();
+
+    void triggerAnimation(Anim anim);
 }

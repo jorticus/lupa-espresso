@@ -48,13 +48,12 @@ void setFault(FaultState state) {
 
 
 static void printState(MachineState uiState) {
-    Serial.print("State: ");
     int s = (int)uiState;
     if (s < sizeof(UiState_Str)) {
-        Serial.println(UiState_Str[s]);
+        Serial.print(UiState_Str[s]);
     }
     else {
-        Serial.println(s);
+        Serial.print(s);
     }
 }
 
@@ -63,24 +62,31 @@ void resetIdleTimer() {
     t_idle_start = millis();
 }
 
-void onStateChanged() {
+void onStateChanged(MachineState lastState, MachineState newState) {
 
     // Detect and handle sleep state
-    switch (uiState) {
+    switch (newState) {
         case MachineState::Sleep:
             Display::setBrightness(CONFIG_IDLE_BRIGHTNESS);
             HeatControl::setMode(HeatControl::Mode::Sleep);
             break;
             
         case MachineState::Off:
-            Display::setBrightness(0.0f);
-            Display::turnOff();
+            // Display::setBrightness(0.0f);
+            // Display::turnOff();
             HeatControl::setMode(HeatControl::Mode::Off);
             IO::failsafe();
+
+            UI::triggerAnimation(UI::Anim::PowerOff);
             break;
 
         default:
-            Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
+            if (lastState == MachineState::Off) {
+                UI::triggerAnimation(UI::Anim::PowerOn);
+            }
+            else {
+                Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
+            }
 
             auto heatMode = HeatControl::getMode();
             if (heatMode == HeatControl::Mode::Sleep ||
@@ -117,12 +123,12 @@ void processState()
 {
     static MachineState _lastUiState = MachineState::Init;
     if (uiState != _lastUiState) {
+        printState(_lastUiState); Serial.print("->"); printState(uiState); Serial.println();
+        onStateChanged(_lastUiState, uiState);
         _lastUiState = uiState;
-        printState(uiState);
-        onStateChanged();
     }
 
-    if (uiState == MachineState::Off) {
+    if (uiState == MachineState::Off || uiState == MachineState::FirmwareUpdate) {
         return;
     }
 
