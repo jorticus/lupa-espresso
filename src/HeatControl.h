@@ -4,10 +4,11 @@
 namespace HeatControl {
 
     enum class BoilerProfile {
-        Off,    // Heater off
-        Idle,   // Idle temperature profile
-        Brew,   // Brewing temperature profile
-        Steam   // Steaming temperature profile
+        Off,     // Heater off
+        Idle,    // Idle temperature profile
+        Brew,    // Brewing temperature profile
+        Steam,   // Steaming temperature profile
+        Tuning   // PID auto-tuning procedure
     };
 
     /// @brief Initialize control loop parameters

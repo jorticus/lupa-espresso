@@ -11,6 +11,13 @@
 // Target boiler temperature in idle mode (BoilerProfile::Idle)
 #define CONFIG_BOILER_IDLE_TEMPERATURE_C (60.0f)
 
+// Target boiler temperature for PID tuning (BoilerProfile::Tuning)
+#define CONFIG_BOILER_TUNING_TEMPERATURE_C (110.f)
+
+// Range at which the PID controller is active
+// relative to the current PID setpoint
+#define CONFIG_BOILER_PID_RANGE_C (20.0f)
+
 // Maximum boiler temperature
 // Heat control loop will be disabled above this temperature.
 // Important: This does not replace the need for a hardware safety cutoff!
@@ -40,6 +47,9 @@
 
 // Whether to wait for WiFi connection on startup
 #define CONFIG_WAIT_FOR_WIFI (false)
+
+// Perform PID tuning process instead of usual logic
+#define CONFIG_DO_PID_TUNE (true)
 
 // Measured power of boiler in watts,
 // used for estimating energy consumption

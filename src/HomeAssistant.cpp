@@ -153,3 +153,7 @@ void HomeAssistant::process() {
 
     client.loop();
 }
+
+void HomeAssistant::publishData(const char* topic, const char* payload) {
+    client.publish(topic, payload);
+}

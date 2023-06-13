@@ -18,7 +18,8 @@ namespace State {
         Brewing,
         SensorTest,
         FirmwareUpdate,
-        Sleep
+        Sleep,
+        Tuning
     };
 
     enum class FaultState {

@@ -31,6 +31,7 @@ static const char* UiState_Str[] = {
     "Sensor Test",
     "Firmware Update",
     "Sleep",
+    "Tuning"
 };
 
 void setState(MachineState state) {
@@ -81,6 +82,10 @@ void onStateChanged(MachineState lastState, MachineState newState) {
             // Display will be turned off when the animation completes.
             UI::triggerAnimation(UI::Anim::PowerOff);
             break;
+
+        case MachineState::Tuning:
+            HeatControl::setProfile(HeatControl::BoilerProfile::Tuning);
+            // Fall through to default...
 
         default:
             if (lastState == MachineState::Off) {
@@ -167,9 +172,17 @@ void processState()
         // Device is ready once temperature rises above the configured threshold
         if (SensorSampler::isTemperatureValid()) {
             auto t = SensorSampler::getTemperature();
+            // PID tuning mode, wait until we get close to the PID control range
+            if (CONFIG_DO_PID_TUNE) {
+                if (t >= (CONFIG_BOILER_TUNING_TEMPERATURE_C - CONFIG_BOILER_PID_RANGE_C)) {
+                    Serial.println("Begin PID tuning...");
+                    uiState = MachineState::Tuning;
+                    return;
+                }
+            }
             // Up to sleeping temperature, go to sleep
             // State {Preheat -> Sleep}
-            if (t > CONFIG_BOILER_IDLE_TEMPERATURE_C && CONFIG_IDLE_AFTER_PREHEAT) {
+            else if (t > CONFIG_BOILER_IDLE_TEMPERATURE_C && CONFIG_IDLE_AFTER_PREHEAT) {
                 uiState = MachineState::Sleep;
             }
             // Close to boiler temperature, go to ready
@@ -189,6 +202,11 @@ void processState()
             uiState = MachineState::Preheat;
             resetIdleTimer();
         }
+    }
+
+    // Deactivate regular machine logic in PID tuning mode
+    if (CONFIG_DO_PID_TUNE) {
+        return;
     }
 
     // If lever is actuated at any time, move to brew phase.

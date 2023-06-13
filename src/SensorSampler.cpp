@@ -91,7 +91,7 @@ static void onSensorTimer(TimerHandle_t timer) {
 
     if ((t2 - t1) > sampleRateMs) {
         // Above code took longer than the timer interval to execute
-        Serial.println("TIMER1 OVERFLOW");
+        Serial.printf("TIMER1 OVERFLOW %d\n", (t2 - t1));
     }
 
     // Serial.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
@@ -136,9 +136,12 @@ static void onTemperatureTimer(TimerHandle_t timer) {
                     is_valid_temperature = true;
                 }
                 else {
+                    Serial.printf("INVALID RTD T: %.2f (0x%x)\n", temperature, raw_filtered);
                     is_valid_temperature = false;
                 }
             }
+        } else {
+            Serial.printf("INVALID RTD RAW: 0x%x\n", raw);
         }
     }
 

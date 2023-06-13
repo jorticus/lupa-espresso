@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "SensorSampler.h"
 #include "HeatControl.h"
+#include "HomeAssistant.h"
 #include "PID.h"
 #include "IO.h"
 #include "hardware.h"
@@ -26,9 +27,6 @@ static fPID pid;
 
 static unsigned long t_start = 0;
 static unsigned long t_width = 0;
-
-// Deactivate PID regulation if temperature is this much less than the current setpoint
-const double PID_REGULATE_RANGE_TEMPERATURE = 20.0;
 
 const float PID_OUTPUT_MAX = 100.0f;
 const float PID_OUTPUT_MIN = 0.0f;
@@ -63,12 +61,26 @@ void initControlLoop()
     setProfile(BoilerProfile::Brew);
 }
 
+void publishTuningData(float pid_input, float pid_output) {
+    float t_sec = millis() * 0.001f;
+    char s[50];
+
+    snprintf(s, sizeof(s), "%.1f,%.1f,%.1f", 
+        t_sec,
+        pid_input,
+        pid_output
+    );
+    Serial.printf("Tuning: %s\n", s);
+    HomeAssistant::publishData("lupa/tuning/boiler", s);
+}
+
 void processControlLoop()
 {
     // TODO: Watchdog for safety.
 
     static unsigned long t_last = 0;
     static unsigned long t_last_pid = 0;
+    static float pid_output = 0.0f;
 
     if (!SensorSampler::isTemperatureValid() || 
         IO::isWaterTankLow() || 
@@ -87,7 +99,7 @@ void processControlLoop()
         }
 
         // Not yet near the pid_setpoint, 100% duty until we get close
-        if (pid_input < (pid_setpoint - PID_REGULATE_RANGE_TEMPERATURE)) {
+        if (pid_input < (pid_setpoint - CONFIG_BOILER_PID_RANGE_C)) {
             if (IO::getHeatPower() < 1.0f) {
                 Serial.printf("PREHEAT: %.1f\n", pid_input);
             }
@@ -108,21 +120,40 @@ void processControlLoop()
                 }
             }
             pid.setPerturbationOffset(offset);
-            //pid.SetMode(AUTOMATIC);
-
-            //if (pid.Compute()) {
 
             auto t_now = millis();
             if ((t_now - t_last_pid) >= PID_PERIOD) {
                 t_last_pid = t_now;
-                float pid_output = pid.calculateTick(pid_input);
+
+                if (operating_profile == BoilerProfile::Tuning) {
+                    // 100% if below setpoint, 0% if above, with 1C hysteresis
+                    if (pid_input < (CONFIG_BOILER_TUNING_TEMPERATURE_C + 1.0f)) {
+                        pid_output = 100.0f;
+                    }
+                    else if (pid_input > (CONFIG_BOILER_TUNING_TEMPERATURE_C - 1.0f)) {
+                        pid_output = 0.0f;
+                    }
+
+                    publishTuningData(pid_input, pid_output);
+                }
+                else {
+                    pid_output = pid.calculateTick(pid_input);
+                }
 
                 //Serial.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
 
                 if (pid_output > 0.0) {
                     if (t_start == 0) {
-                        IO::setHeatPower(pid_output * 0.01f);
-                        t_width = (unsigned long)(pid_output * (double)HEATER_PERIOD * 0.01);
+                        t_width = (unsigned long)(pid_output * (float)HEATER_PERIOD * 0.01f);
+                        if (t_width < HEATER_MIN_PERIOD) {
+                            t_width = 0;
+                            IO::setHeatPower(0.0);
+                            IO::setHeat(false);
+                        }
+                        else {
+                            IO::setHeatPower(pid_output * 0.01f);
+                        }
+                        
                     }
                 }
                 else {
@@ -135,7 +166,7 @@ void processControlLoop()
             t_now = millis();
             if ((t_now - t_last) >= HEATER_PERIOD) {
                 t_last = t_now;
-                if ((t_width > HEATER_MIN_PERIOD) && (t_start == 0)) {
+                if ((t_width >= HEATER_MIN_PERIOD) && (t_start == 0)) {
                     t_start = t_now;
                     Serial.printf("Heat: %d/%d\n", t_width, HEATER_PERIOD);
                     IO::setHeat(true);
@@ -178,6 +209,10 @@ void setProfile(BoilerProfile mode) {
         case BoilerProfile::Idle:
             Serial.println("Idle");
             pid_setpoint = CONFIG_BOILER_IDLE_TEMPERATURE_C;
+            break;
+        case BoilerProfile::Tuning:
+            Serial.println("Tuning");
+            pid_setpoint = CONFIG_BOILER_TUNING_TEMPERATURE_C;
             break;
     }
 

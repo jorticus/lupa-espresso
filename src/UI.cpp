@@ -71,13 +71,13 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
     switch (WiFi.status()) {
         case WL_NO_SSID_AVAIL:
             // Bad SSID or AP not present
-            err_msg = "No SSID";
+            err_msg = "Bad SSID";
             break;
         case WL_CONNECT_FAILED:
             err_msg = "Connect Failed";
             break;
         case WL_IDLE_STATUS:
-            err_msg = "Station Idle";
+            err_msg = "Connecting";
             break;
         case WL_CONNECTION_LOST:
             err_msg = "Connection Lost";
@@ -335,6 +335,11 @@ void renderRight() {
     switch (uiState) {
         case MachineState::Init:
             uiRenderStatusRing(gfx, "INIT", TFT_BLUE, ring_w);
+            break;
+
+        case MachineState::Tuning:
+            ring_w = ring_w_min + 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            uiRenderStatusRing(gfx, "TUNING", TFT_GREENYELLOW, ring_w);
             break;
 
         case MachineState::Preheat:
