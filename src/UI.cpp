@@ -14,13 +14,9 @@
 #include "hardware.h"
 
 using namespace Display;
+using namespace SensorSampler;
 
 constexpr float deg2rad      = 3.14159265359/180.0;
-
-const int numSamples = 300;
-extern ValueArray<float, numSamples> temperatureSamples;
-extern ValueArray<float, numSamples> pressureSamples;
-extern ValueArray<float, numSamples> flowSamples;
 
 // Shadow copy of above sample arrays so we can freeze the sensor data
 ValueArray<float, numSamples> pressureSamplesFrozen;
@@ -136,7 +132,7 @@ void uiRenderPressureGauge(GfxCanvas& gfx) {
     uiRenderLabelFormattedCentered(gfx,
         60,
         TFT_WHITE,
-        (SensorSampler::isPressureValid() ? "%.2f Bar" : "- Bar"),
+        (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"),
         SensorSampler::getPressure());
 }
 
@@ -228,11 +224,11 @@ void uiRenderBrewingScreen(GfxCanvas& gfx) {
         "%.1f", 
         brewTimeSec);
 
-    uiRenderLabelFormattedCentered(gfx, 
-        60, 
-        TFT_WHITE,
-        (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"), 
-        SensorSampler::getPressure());
+    // uiRenderLabelFormattedCentered(gfx, 
+    //     60, 
+    //     TFT_WHITE,
+    //     (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"), 
+    //     SensorSampler::getPressure());
 
     // {
     //     const char* status_str = "BREWING";

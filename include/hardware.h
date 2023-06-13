@@ -68,6 +68,9 @@
 // Maximum flowrate for water flow sensor
 #define FLOW_MAX_VALUE (10.0f)
 
+// Conversion of raw flow rate pulses to mL/s value
+#define FLOW_RATE_CORRECTION_FACTOR (0.155f)
+
 //
 // SPI Bus:
 // - LCD Left

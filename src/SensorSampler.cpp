@@ -3,6 +3,7 @@
 #include "SensorSampler.h"
 
 #include "value_array.h"
+#include "fir.h"
 
 #include "hardware.h"
 #include "Adafruit_MAX31865.h"
@@ -12,17 +13,23 @@
 extern Adafruit_MAX31865   rtd;
 extern PressureTransducer  pressure;
 
-const int numSamples = 300;
+namespace SensorSampler {
+
+// Circular buffers for storing historical sensor readings.
+// These are used to render graphs in the UI
 ValueArray<float, numSamples> temperatureSamples;
 ValueArray<float, numSamples> pressureSamples;
 ValueArray<float, numSamples> flowSamples;
 
-bool isRtdAvailable = false;
-bool isPressureAvailable = false;
-bool isFlowAvailable = false;
+
+static bool isRtdAvailable = false;
+static bool isPressureAvailable = false;
+static bool isFlowAvailable = false;
+
+static bool s_isFlowing = false;
 
 // https://wirelesslibrary.labs.b-com.com/FIRfilterdesigner/#/#result-container
-static float filter_taps_10hz[] = {
+static const float filter_21tap_10hz[] = {
     // 0.5Hz @ 10Hz sample
     //0.000013852416493342338,-0.0005731238127498802,-0.0009721997930368535,-0.0003987652239076082,0.0015930558424197066,0.003593109253255786,0.0027499718691119065,-0.0023913231618520802,-0.008767551350291674,-0.009422988391483304,0.0004666650013992939,0.016363739680210786,0.023898422721949482,0.009361110013092595,-0.024837897952016432,-0.053559581273241195,-0.041269022948776955,0.03159907402929975,0.14754130006838234,0.2552663330169204,0.29914396401894533,0.2552663330169204,0.14754130006838234,0.03159907402929975,-0.041269022948776955,-0.053559581273241195,-0.024837897952016432,0.009361110013092595,0.023898422721949482,0.016363739680210786,0.0004666650013992939,-0.009422988391483304,-0.008767551350291674,-0.0023913231618520802,0.0027499718691119065,0.003593109253255786,0.0015930558424197066,-0.0003987652239076082,-0.0009721997930368535,-0.0005731238127498802,0.000013852416493342338
 
@@ -36,50 +43,11 @@ static float filter_taps_10hz[] = {
     // 0.5-10Hz @ 100Hz sample
     0.00434242941534996,0.008949466084110017,0.015604865894648115,0.025553833195889674,0.03669107854100511,0.04997034706423948,0.06273586677719478,0.07524549489402194,0.08472427725410565,0.09148873683644758,0.09336684579062392,0.09148873683644758,0.08472427725410565,0.07524549489402194,0.06273586677719478,0.04997034706423948,0.03669107854100511,0.025553833195889674,0.015604865894648115,0.008949466084110017,0.00434242941534996
 };
-const int SAMPLEFILTER_TAP_NUM = sizeof(filter_taps_10hz) / sizeof(filter_taps_10hz[0]);
 
-template <size_t N_TAPS>
-class FirFilter {
-public:
-    FirFilter(const float taps[N_TAPS]) : taps(taps), samples(), last_index(0)
-    {
-        for (int i = 0; i < N_TAPS; i++) {
-            samples[i] = 0;
-        }
-    }
-
-    void add(float sample) {
-        samples[last_index++] = sample;
-        if (last_index == N_TAPS) {
-            last_index = 0;
-            ready = true;
-        }
-    }
-
-    float get() const {
-        float acc = 0;
-        int index = last_index;
-        for (int i = 0; i < N_TAPS; ++i) {
-            index = index != 0 ? index-1 : N_TAPS-1;
-            acc += samples[index] * taps[i];
-        };
-        return acc;
-    }
-
-    bool isReady() const {
-        return ready;
-    }
-
-private:
-    const float* taps;
-    std::array<float, N_TAPS> samples;
-    unsigned int last_index;
-    bool ready;
-};
-
-FirFilter<SAMPLEFILTER_TAP_NUM> filter1 { filter_taps_10hz };
-FirFilter<SAMPLEFILTER_TAP_NUM> filter2 { filter_taps_10hz };
-FirFilter<SAMPLEFILTER_TAP_NUM> filter3 { filter_taps_10hz };
+// Automatic FIR filters of type FirFilter<N_TAPS> { taps }
+static auto filter_pressure     = MAKE_FIR_FILTER(filter_21tap_10hz);
+static auto filter_temperature  = MAKE_FIR_FILTER(filter_21tap_10hz);
+static auto filter_flowrate     = MAKE_FIR_FILTER(filter_21tap_10hz);
 
 static float value_pressure = 0.0f;
 static float value_temperature = 0.0f;
@@ -91,7 +59,7 @@ static bool is_valid_flow_rate = false;
 
 static const unsigned long sampleRateMs = 10;
 static const unsigned long temperatureSampleRateMs = 100;
-const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
+static const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
 static TimerHandle_t timer;
 static TimerHandle_t timer2;
@@ -108,13 +76,13 @@ static void onSensorTimer(TimerHandle_t timer) {
     // As long a the timer interval is greater than ~50ms, we should have a valid sample by now
     auto sample = pressure.readSample();
     if (sample.is_valid) {
-        filter1.add(sample.pressure);
+        filter_pressure.add(sample.pressure);
     }
     else {
-        filter1.add(0);
+        filter_pressure.add(0);
     }
-    if (filter1.isReady()) {
-        value_pressure = filter1.get() * 0.0001f;
+    if (filter_pressure.isReady()) {
+        value_pressure = filter_pressure.get() * 0.0001f;
         is_valid_pressure = sample.is_valid;
     }
     pressure.startSample();
@@ -152,15 +120,15 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     if (rtd.isSampleReady()) {
         auto raw = rtd.readSample();
         if (raw > 0 && raw < 0x7000) {//0x7FFF) {
-            filter2.add(raw);
+            filter_temperature.add(raw);
 
             // auto unfiltered_temp = calculateRtdTemperature(raw);
             // if (unfiltered_temp > 200.0f) {
             //     Serial.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
             // }
 
-            if (filter2.isReady()) {
-                float raw_filtered = filter2.get();
+            if (filter_temperature.isReady()) {
+                float raw_filtered = filter_temperature.get();
                 auto temperature = calculateRtdTemperature(raw_filtered);
                 if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
 
@@ -180,13 +148,23 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     if (PulseCounter1.isSampleReady()) {
         auto pulses_per_second = PulseCounter1.getFrequency();
         if (pulses_per_second < 300.0f) {
-            const float correction = 0.155f;
-            value_flow_rate = pulses_per_second * correction;
-            is_valid_flow_rate = true;
+            // Use raw unfiltered value for detecting boolean isFlowing,
+            // as this avoids introducing delay
+            s_isFlowing = (pulses_per_second > 1.0f);
+
+            filter_flowrate.add(pulses_per_second);
+            if (filter_flowrate.isReady()) {
+                const float correction = FLOW_RATE_CORRECTION_FACTOR;
+                value_flow_rate = filter_flowrate.get() * correction;
+                is_valid_flow_rate = true;
+            }
         }
         else {
             // Ignore spurious reading (repeat sample)
         }
+    } else {
+        is_valid_flow_rate = false;
+        s_isFlowing = false;
     }
 
     // 100ms per tick
@@ -199,7 +177,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     // 1 sec per tick
     if (divider10++ == 10) {
         divider10 = 0;
-        if (filter2.isReady()) {
+        if (filter_temperature.isReady()) {
             temperatureSamples.add(value_temperature);
         }
     }
@@ -291,7 +269,7 @@ bool initFlow() {
 }
 
 
-bool SensorSampler::initialize() {
+bool initialize() {
     Serial.println("Initialize Sensor Sampler");
 
     timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdTRUE, nullptr, onTemperatureTimer);
@@ -310,7 +288,7 @@ bool SensorSampler::initialize() {
     return (isTemperatureAvailable && isPressureAvailable && isFlowAvailable);
 }
 
-void SensorSampler::start() {
+void start() {
     xTimerStart(timer2, 0);
     xTimerStart(timer, 0);
 
@@ -319,22 +297,22 @@ void SensorSampler::start() {
     PulseCounter1.begin(FLOW_PULSE_PIN, sampleRateMs);
 }
 
-void SensorSampler::stop() {
+void stop() {
     xTimerStop(timer, 0);
     xTimerStop(timer2, 0);
 
     rtd.autoConvert(false);
 }
 
-void SensorSampler::process() {
+void process() {
 
 }
 
-float SensorSampler::getTemperature() {
+float getTemperature() {
     return value_temperature;
 }
 
-float SensorSampler::getEstimatedGroupheadTemperature() {
+float getEstimatedGroupheadTemperature() {
     if (!is_valid_temperature) {
         return 0.0f;
     }
@@ -356,30 +334,36 @@ float SensorSampler::getEstimatedGroupheadTemperature() {
     }
 }
 
-float SensorSampler::getPressure() {
+float getPressure() {
     return value_pressure;
 }
 
-float SensorSampler::getFlowRate() {
+float getFlowRate() {
     return value_flow_rate;
 }
 
-float SensorSampler::getTotalFlowVolume() {
+float getTotalFlowVolume() {
     return 0.0f; // TODO
 }
 
-void SensorSampler::resetFlowCounter() {
+void resetFlowCounter() {
     // TODO
 }
 
-bool SensorSampler::isTemperatureValid() {
+bool isTemperatureValid() {
     return is_valid_temperature;
 }
 
-bool SensorSampler::isPressureValid() {
+bool isPressureValid() {
     return is_valid_pressure;
 }
 
-bool SensorSampler::isFlowRateValid() {
+bool isFlowRateValid() {
     return is_valid_flow_rate;
 }
+
+bool isFlowing() {
+    return s_isFlowing;
+}
+
+} // namespace SensorSampler

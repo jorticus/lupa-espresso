@@ -71,8 +71,7 @@ bool isLeverPulled() {
     // Detect lever by measuring water flow
     return (
         (State::uiState != State::MachineState::Preheat) && 
-        SensorSampler::isFlowRateValid() && 
-        (SensorSampler::getFlowRate() > 1.0f)
+        SensorSampler::isFlowing()
     );
 
     //return (digitalRead(PIN_IN_LEVER) == HIGH);

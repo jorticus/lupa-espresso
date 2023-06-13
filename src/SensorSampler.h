@@ -1,5 +1,7 @@
 #pragma once
 
+#include "value_array.h"
+
 /// @brief Sensor sample collection and filtering
 namespace SensorSampler {
 
@@ -35,6 +37,9 @@ namespace SensorSampler {
     /// @return Flowrate, in mL/s
     float getFlowRate();
 
+    /// @brief Whether water is currently flowing
+    bool isFlowing();
+
     /// @brief Accumulated flow volume
     /// @return Volume, in mL
     float getTotalFlowVolume();
@@ -54,4 +59,14 @@ namespace SensorSampler {
     /// @return true if valid, false if sensor error or out of range
     bool isFlowRateValid();
 
+    static const int numSamples = 300;
+    
+    /// @brief Temperature readings
+    extern ValueArray<float, numSamples> temperatureSamples;
+
+    /// @brief Pressure readings
+    extern ValueArray<float, numSamples> pressureSamples;
+
+    /// @brief Flow rate readings
+    extern ValueArray<float, numSamples> flowSamples;
 }
