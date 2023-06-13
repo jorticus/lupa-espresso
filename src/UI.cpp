@@ -137,15 +137,17 @@ void uiRenderPressureGauge(GfxCanvas& gfx) {
 }
 
 float getTemperatureMaxRange() {
-    return 140.0f;
+    return CONFIG_MAX_BOILER_TEMPERATURE_C;
 }
 float getTemperatureMinRange() {
-    if ((uiState != MachineState::Preheat) && (SensorSampler::getTemperature() >= 80.0f)) {
+    const float range1 = 20.0f;
+    const float range2 = 100.0f;
+    if ((uiState != MachineState::Preheat) && (SensorSampler::getTemperature() >= range2)) {
         // Use smaller range when up to temperature
-        return 80.0f;
+        return range2;
     }
     else {
-        return 20.0f;
+        return range1;
     }
 }
 

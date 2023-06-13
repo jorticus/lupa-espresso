@@ -65,13 +65,71 @@ void publishTuningData(float pid_input, float pid_output) {
     float t_sec = millis() * 0.001f;
     char s[50];
 
-    snprintf(s, sizeof(s), "%.1f,%.1f,%.1f", 
+    snprintf(s, sizeof(s), "%.1f,%.2f,%.1f", 
         t_sec,
         pid_input,
         pid_output
     );
     Serial.printf("Tuning: %s\n", s);
     HomeAssistant::publishData("lupa/tuning/boiler", s);
+}
+
+const float tuningPhaseSetpoint[] = {
+    10.0f,
+    20.0f,
+    40.0f,
+    80.0f,
+    100.0f,
+    0.0f
+};
+
+float calculateTuningTick(float pid_input) {
+    static float output = 0.0f;
+    static unsigned long tuning_interval_ms = 1*60*1000;
+    static float last_input = 0.0f;
+    static unsigned long t_last = 0;
+    static int tuning_phase = 0;
+    const int n_phases = sizeof(tuningPhaseSetpoint)/sizeof(tuningPhaseSetpoint[0]) * 2;
+
+    if (t_last == 0) {
+        t_last = millis();
+        last_input = pid_input;
+    }
+
+    // // 100% if below setpoint, 0% if above, with 1C hysteresis
+    // if (pid_input < (CONFIG_BOILER_TUNING_TEMPERATURE_C + 1.0f)) {
+    //     pid_output = 100.0f;
+    // }
+    // else if (pid_input > (CONFIG_BOILER_TUNING_TEMPERATURE_C - 1.0f)) {
+    //     pid_output = 0.0f;
+    // }
+
+    if ((millis() - t_last) > tuning_interval_ms) {
+        t_last = millis();
+
+        if (tuning_phase == n_phases) {
+            output = 0.0f;
+            Serial.println("[ TUNING DONE ]");
+        }
+        else {
+            tuning_phase++;
+            Serial.printf("[ TUNING PHASE: %d ]\n", tuning_phase);
+            if ((tuning_phase & 1) == 0) {
+                // odd numbers
+                output = 0.0f; 
+                tuning_interval_ms = 5*60*1000; // cool
+            }
+            else {
+                // even numbers
+                output = tuningPhaseSetpoint[tuning_phase];
+                tuning_interval_ms = 1*60*1000; // heat
+            }
+            Serial.printf("Setpoint: %.1f\n", output);
+            Serial.printf("Interval: %dms\n", tuning_interval_ms);
+        }
+    }
+
+    return output;
 }
 
 void processControlLoop()
@@ -81,6 +139,7 @@ void processControlLoop()
     static unsigned long t_last = 0;
     static unsigned long t_last_pid = 0;
     static float pid_output = 0.0f;
+    static int tuning_phase = 0;
 
     if (!SensorSampler::isTemperatureValid() || 
         IO::isWaterTankLow() || 
@@ -126,14 +185,7 @@ void processControlLoop()
                 t_last_pid = t_now;
 
                 if (operating_profile == BoilerProfile::Tuning) {
-                    // 100% if below setpoint, 0% if above, with 1C hysteresis
-                    if (pid_input < (CONFIG_BOILER_TUNING_TEMPERATURE_C + 1.0f)) {
-                        pid_output = 100.0f;
-                    }
-                    else if (pid_input > (CONFIG_BOILER_TUNING_TEMPERATURE_C - 1.0f)) {
-                        pid_output = 0.0f;
-                    }
-
+                    pid_output = calculateTuningTick(pid_input);
                     publishTuningData(pid_input, pid_output);
                 }
                 else {
