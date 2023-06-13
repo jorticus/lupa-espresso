@@ -146,7 +146,7 @@ void HomeAssistant::process() {
             }
 
             // Estimate boiler power and report to HA
-            float estimated_power = IO::getHeatPower() * CONFIG_BOILER_FULL_POWER;
+            float estimated_power = IO::getHeatPower() * CONFIG_BOILER_FULL_POWER_WATTS;
             sensor_power.update(estimated_power);
         }
     }

@@ -3,11 +3,11 @@
 /// @brief Boiler heater control loop
 namespace HeatControl {
 
-    enum class Mode {
-        Off,
-        Sleep,
-        Brew,
-        Steam
+    enum class BoilerProfile {
+        Off,    // Heater off
+        Idle,   // Idle temperature profile
+        Brew,   // Brewing temperature profile
+        Steam   // Steaming temperature profile
     };
 
     /// @brief Initialize control loop parameters
@@ -16,9 +16,9 @@ namespace HeatControl {
     /// @brief Calculate next tick of the control loop
     void processControlLoop();
 
-    /// @brief Set the operating mode
-    void setMode(Mode mode);
+    /// @brief Set the target boiler temperature profile
+    void setProfile(BoilerProfile profile);
 
-    /// @brief Get the operating mode
-    Mode getMode();
+    /// @brief Get the current boiler temperature profile
+    BoilerProfile getProfile();
 }

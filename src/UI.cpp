@@ -111,15 +111,15 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
 
     // Boiler heat mode
     uint32_t color = TFT_BLACK;
-    auto mode = HeatControl::getMode();
+    auto mode = HeatControl::getProfile();
     switch (mode) {
-        case HeatControl::Mode::Brew:
-            color = TFT_RED;
-            break;
-        case HeatControl::Mode::Steam:
+        // case HeatControl::BoilerProfile::Brew:
+        //     color = TFT_RED;
+        //     break;
+        case HeatControl::BoilerProfile::Steam:
             color = TFT_SKYBLUE;
             break;
-        case HeatControl::Mode::Sleep:
+        case HeatControl::BoilerProfile::Idle:
             color = TFT_DARKCYAN;
             break;
     }

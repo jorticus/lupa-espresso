@@ -41,7 +41,7 @@ const float MAX_BOILER_TEMPERATURE = CONFIG_MAX_BOILER_TEMPERATURE_C;
 
 namespace HeatControl {
 
-static Mode operating_mode;
+static BoilerProfile operating_profile = BoilerProfile::Off;
 
 void initControlLoop()
 {
@@ -60,7 +60,7 @@ void initControlLoop()
     // take a LOT longer to cool down than it will to warm up,
     // so the integral term will work against us.
 
-    setMode(Mode::Brew);
+    setProfile(BoilerProfile::Brew);
 }
 
 void processControlLoop()
@@ -70,14 +70,9 @@ void processControlLoop()
     static unsigned long t_last = 0;
     static unsigned long t_last_pid = 0;
 
-    // TODO: Scheme should operate in 3 modes:
-    // 1. Preheat : Heat 100% on until reach defined temperature
-    // 2. Regulate : PID control loop to keep within target
-    // 3. Steam : Heat 100% while pressure is low to maintain steam
-
     if (!SensorSampler::isTemperatureValid() || 
         IO::isWaterTankLow() || 
-        (operating_mode == Mode::Off))
+        (operating_profile == BoilerProfile::Off))
     {
         // Turn off heat/pump/etc if we don't have a temperature reading
         IO::failsafe();
@@ -163,34 +158,34 @@ void processControlLoop()
     }
 }
 
-void setMode(Mode mode) {
-    operating_mode = mode;
+void setProfile(BoilerProfile mode) {
+    operating_profile = mode;
 
-    Serial.print("Boiler heat mode: ");
+    Serial.print("Boiler heat profile: ");
     switch (mode) {
-        case Mode::Off:
+        case BoilerProfile::Off:
             //pid_setpoint = 0.0f;
             // TODO: Reset/Disable PID controller
             break;
-        case Mode::Brew:
+        case BoilerProfile::Brew:
             Serial.println("Brew");
             pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
             break;
-        case Mode::Steam:
+        case BoilerProfile::Steam:
             Serial.println("Steam");
             pid_setpoint = CONFIG_BOILER_STEAM_TEMPERATURE_C;
             break;
-        case Mode::Sleep:
-            Serial.println("Sleep");
-            pid_setpoint = CONFIG_BOILER_SLEEP_TEMPERATURE_C;
+        case BoilerProfile::Idle:
+            Serial.println("Idle");
+            pid_setpoint = CONFIG_BOILER_IDLE_TEMPERATURE_C;
             break;
     }
 
     pid.setSetpoint(pid_setpoint);
 }
 
-Mode getMode() {
-    return operating_mode;
+BoilerProfile getProfile() {
+    return operating_profile;
 }
 
 }

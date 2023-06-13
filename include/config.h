@@ -1,39 +1,46 @@
 #pragma once
 
-// If true, put device into power-saving mode as soon as it is
-// up to temperature. 
-#define CONFIG_SLEEP_AFTER_PREHEAT (false)
-
-// Target boiler temperature for brewing
+// Target boiler temperature for brewing (BoilerProfile::Brew)
 //#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
 #define CONFIG_BOILER_TEMPERATURE_C (117.0f) // ~96C on grouphead
 //#define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
 
-// Target preheat temperature
-// Defines when to exit the preheat phase and become ready.
-// Does not control actual target temperature.
-#define CONFIG_BOILER_PREHEAT_TARGET_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
-
-// Target boiler temperature for steaming
+// Target boiler temperature for steaming (BoilerProfile::Steam)
 #define CONFIG_BOILER_STEAM_TEMPERATURE_C (123.0f)
 
-// Target boiler temperature in sleep mode
-#define CONFIG_BOILER_SLEEP_TEMPERATURE_C (95.0f)
+// Target boiler temperature in idle mode (BoilerProfile::Idle)
+#define CONFIG_BOILER_IDLE_TEMPERATURE_C (60.0f)
 
 // Maximum boiler temperature
+// Heat control loop will be disabled above this temperature.
+// Important: This does not replace the need for a hardware safety cutoff!
 #define CONFIG_MAX_BOILER_TEMPERATURE_C (125.0f)
 
+// Target preheat temperature
+// Defines when to exit the preheat phase and become ready.
+// Does not control actual target temperature, only controls for how
+// long the preheat UI is shown.
+#define CONFIG_BOILER_PREHEAT_TARGET_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
+
 // Machine idle timeout
-#define CONFIG_IDLE_TIMEOUT_MS (30*60*1000)
+//#define CONFIG_IDLE_TIMEOUT_MS (0) // Disabled
+//#define CONFIG_IDLE_TIMEOUT_MS (30*60*1000) // 30m
+#define CONFIG_IDLE_TIMEOUT_MS (2*60*60*1000) // 2h
+
+// If true, put device into power-saving mode as soon as it is
+// up to temperature. 
+#define CONFIG_IDLE_AFTER_PREHEAT (false)
 
 // Brew finish timeout
+// Time before post-brew screen disappears and is replaced with the Ready screen
 #define CONFIG_BREW_FINISH_TIMEOUT_MS (60*1000)
 
 #define CONFIG_FULL_BRIGHTNESS (1.0f)
 #define CONFIG_IDLE_BRIGHTNESS (0.2f)
 
+// Whether to wait for WiFi connection on startup
 #define CONFIG_WAIT_FOR_WIFI (false)
 
 // Measured power of boiler in watts,
 // used for estimating energy consumption
-#define CONFIG_BOILER_FULL_POWER (1333.0f)
+#define CONFIG_BOILER_FULL_POWER_WATTS (1333.0f)

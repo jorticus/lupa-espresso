@@ -68,31 +68,37 @@ void onStateChanged(MachineState lastState, MachineState newState) {
     switch (newState) {
         case MachineState::Sleep:
             Display::setBrightness(CONFIG_IDLE_BRIGHTNESS);
-            HeatControl::setMode(HeatControl::Mode::Sleep);
+            HeatControl::setProfile(HeatControl::BoilerProfile::Idle);
             break;
             
         case MachineState::Off:
             // Display::setBrightness(0.0f);
             // Display::turnOff();
-            HeatControl::setMode(HeatControl::Mode::Off);
+            HeatControl::setProfile(HeatControl::BoilerProfile::Off);
             IO::failsafe();
 
+            // When transitioning to the off state, start the power-off animation.
+            // Display will be turned off when the animation completes.
             UI::triggerAnimation(UI::Anim::PowerOff);
             break;
 
         default:
             if (lastState == MachineState::Off) {
+                // When transitioning from Off->On, start the power-on animation.
+                // This will set the display brightness as needed.
                 UI::triggerAnimation(UI::Anim::PowerOn);
             }
-            else {
-                Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
-            }
+            // else {
+            //     Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
+            // }
 
-            auto heatMode = HeatControl::getMode();
-            if (heatMode == HeatControl::Mode::Sleep ||
-                heatMode == HeatControl::Mode::Off)
+            // Set boiler to the brew profile if waking up from an idle/off state
+            // (ie, not in the Steam profile)
+            auto profile = HeatControl::getProfile();
+            if (profile == HeatControl::BoilerProfile::Idle ||
+                profile == HeatControl::BoilerProfile::Off)
             {
-                HeatControl::setMode(HeatControl::Mode::Brew);
+                HeatControl::setProfile(HeatControl::BoilerProfile::Brew);
             }
             break;
     }
@@ -163,7 +169,7 @@ void processState()
             auto t = SensorSampler::getTemperature();
             // Up to sleeping temperature, go to sleep
             // State {Preheat -> Sleep}
-            if (t > CONFIG_BOILER_SLEEP_TEMPERATURE_C && CONFIG_SLEEP_AFTER_PREHEAT) {
+            if (t > CONFIG_BOILER_IDLE_TEMPERATURE_C && CONFIG_IDLE_AFTER_PREHEAT) {
                 uiState = MachineState::Sleep;
             }
             // Close to boiler temperature, go to ready
@@ -230,7 +236,7 @@ void processState()
 
         // Switch into steaming mode (only if brew was longer than 10sec)
         if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
-            HeatControl::setMode(HeatControl::Mode::Steam);
+            HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
         }
         return;
     }
@@ -246,11 +252,11 @@ void processState()
             brewStats.start_brew_time = 0;
 
             // Return to brew mode
-            HeatControl::setMode(HeatControl::Mode::Brew);
+            HeatControl::setProfile(HeatControl::BoilerProfile::Brew);
             resetIdleTimer();
         }
 
-        if ((t_idle_start > 0) &&
+        if ((t_idle_start > 0) && (CONFIG_IDLE_TIMEOUT_MS > 0) &&
             ((millis() - t_idle_start) >= (unsigned long)CONFIG_IDLE_TIMEOUT_MS))
         {
             // Go to sleep after idle timeout
