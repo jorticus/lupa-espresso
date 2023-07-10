@@ -75,9 +75,9 @@ void publishTuningData(float pid_input, float pid_output) {
 }
 
 const float tuningPhaseSetpoint[] = {
-    10.0f,
     20.0f,
     40.0f,
+    60.0f,
     80.0f,
     100.0f,
     0.0f
@@ -117,12 +117,12 @@ float calculateTuningTick(float pid_input) {
             if ((tuning_phase & 1) == 0) {
                 // odd numbers
                 output = 0.0f; 
-                tuning_interval_ms = 5*60*1000; // cool
+                tuning_interval_ms = 2*60*1000; // cool
             }
             else {
                 // even numbers
-                output = tuningPhaseSetpoint[tuning_phase];
-                tuning_interval_ms = 1*60*1000; // heat
+                output = tuningPhaseSetpoint[tuning_phase >> 1];
+                tuning_interval_ms = 2*60*1000; // heat
             }
             Serial.printf("Setpoint: %.1f\n", output);
             Serial.printf("Interval: %dms\n", tuning_interval_ms);

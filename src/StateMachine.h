@@ -5,8 +5,11 @@ namespace State {
     typedef struct {
         unsigned long start_brew_time;
         unsigned long end_brew_time;
+        float preinfuse_volume;
+        float total_volume;
 
-        float total_flow;
+        float avg_brew_pressure;
+        int brew_pressure_avg_count;
     } BrewStats;
 
     enum class MachineState {
@@ -27,6 +30,7 @@ namespace State {
         LowWater,
         OverTemp,
         SensorFailure,
+        SoftwarePanic,
         NotHeating,
         FirmwareUpdateFailure
     };

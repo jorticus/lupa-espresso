@@ -49,7 +49,7 @@
 #define CONFIG_WAIT_FOR_WIFI (false)
 
 // Perform PID tuning process instead of usual logic
-#define CONFIG_DO_PID_TUNE (true)
+#define CONFIG_DO_PID_TUNE (false)
 
 // Measured power of boiler in watts,
 // used for estimating energy consumption

@@ -26,6 +26,8 @@ const unsigned long sensor_sample_interval_ms = 1000;
 const unsigned long slow_sensor_sample_interval = 60*1000; // 1 min
 const unsigned long power_sample_interval_ms = 10*1000;
 
+static bool isInitialized = false;
+
 HAAvailabilityComponent availability(context);
 
 HAComponent<Component::Switch> switch_power(context, 
@@ -79,9 +81,13 @@ void HomeAssistant::init() {
 
     client.setCallback(HAComponentManager::onMessageReceived);
 
+    isInitialized = true;
 }
 
 void reportState() {
+    if (!isInitialized)
+        return;
+
     // State changed, report it...
     auto state = State::getState();
     
@@ -104,6 +110,9 @@ void HomeAssistant::process() {
     static unsigned long t_last = 0;
     static unsigned long t_last_connect = 0;
     static State::MachineState last_ui_state = State::MachineState::Init;
+
+    if (!isInitialized)
+        return;
 
     if (!client.connected()) {
         // Throttle reconnection attempts

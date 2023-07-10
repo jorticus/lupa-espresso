@@ -3,6 +3,7 @@
 #include "StateMachine.h"
 #include "hardware.h"
 #include "button.h"
+#include "driver/touch_sensor.h"
 
 // Temporary: For lever pull detection
 #include "UI.h"
@@ -21,8 +22,14 @@ void onButtonPress(int pin) {
     switch (pin) {
         case 0: // POWER_BTN
             Serial.println("PWR BTN PRESSED\n");
-            bool pwr = (State::uiState == State::MachineState::Off  || State::uiState == State::MachineState::Sleep);
-            State::setPowerControl(pwr);
+
+            if (State::uiState == State::MachineState::Fault) {
+                esp_restart();
+            }
+            else {
+                bool pwr = (State::uiState == State::MachineState::Off  || State::uiState == State::MachineState::Sleep);
+                State::setPowerControl(pwr);
+            }
             break;
     }
 }
@@ -46,18 +53,63 @@ void initGpio() {
     pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
     pinMode(PIN_IN_WATER_LOW, INPUT_PULLUP);
-    pinMode(PIN_IN_WATER_FULL, INPUT_PULLDOWN);
+    //pinMode(PIN_IN_WATER_FULL, INPUT_PULLDOWN);
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
+    //pinMode(PIN_IN_WATER_FULL, INPUT);
+
+    // ledcAttachPin(PIN_IN_WATER_FULL, 1);
+    // ledcSetup(1, 333, 8);
+    // ledcWrite(1, 0x7F);
+
+    touchSetCycles(0xF000, 0xF000);
 
     buttons.onButtonPress(onButtonPress);
+
+    // Initialize touch sensor input
+    // https://github.com/ESP32DE/esp-iot-solution-1/blob/master/documents/touch_pad_solution/touch_sensor_design_en.md
+    touchRead(T0);
+    touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
+    
 
     failsafe();
 }
 
 void process() {
     buttons.process();
+
+    static unsigned long t_last = 0;
+    static int cycle = 0;
+    if ((millis() - t_last) > 1000) {
+        t_last = millis();
+        
+        switch (cycle++) {
+            case 0: // Begin sampling touch channel
+                //touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER); 
+                touch_pad_filter_start(10);
+                touch_pad_sw_start();
+                break;
+
+            case 1: // Read touch channel and turn off sampling
+                Serial.printf("Touch: %d\n", touchRead(T0));
+
+                // TODO: Need to average 10 samples to filter out spikes
+                // Generally this reads 0 when full, and ~80 when empty
+
+                touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
+                touch_pad_filter_stop();
+                cycle = 0;
+                break;
+
+            default:
+                cycle = 0;
+                break;
+        }
+        
+
+        
+    }
 }
 
 bool isWaterTankLow() {

@@ -235,28 +235,67 @@ void processState()
         // Restart brew timer
         brewStats.start_brew_time = t_now;
         brewStats.end_brew_time = 0;
+        brewStats.preinfuse_volume = 0;
+        brewStats.total_volume = 0;
+        brewStats.avg_brew_pressure = 0.0f;
+        brewStats.brew_pressure_avg_count = 0;
 
         // Reset flow accumulation
         SensorSampler::resetFlowCounter();
+
         return;
     }
 
-    // If lever is released, stop brewing
-    // State {Brewing -> Ready}
-    if (uiState == MachineState::Brewing && !IO::isLeverPulled()) {
-        uiState = MachineState::Ready;
-        resetIdleTimer();
+    if (uiState == MachineState::Brewing) {
+        float pressure = SensorSampler::getPressure();
 
-        UI::uiFreezeGraphs();
-
-        // Stop brew timer
-        brewStats.end_brew_time = millis();
-
-        // Switch into steaming mode (only if brew was longer than 10sec)
-        if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
-            HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
+        // Detect end of pre-infusion by looking at when the pressure goes above a threshold
+        const float brew_pressure_threshold = 7.5f;
+        if ((brewStats.preinfuse_volume < 0.01f) && (pressure > brew_pressure_threshold)) {
+            brewStats.preinfuse_volume = SensorSampler::getTotalFlowVolume();
+            SensorSampler::resetFlowCounter();
+            brewStats.avg_brew_pressure = 0.0f;
+            brewStats.brew_pressure_avg_count = 0;
+            // TODO: With blank inserted, this still accumulates about 6mL
         }
-        return;
+
+        // Detect not getting up to pressure
+        // Usually preinfusion lasts 6-7 seconds, but this is mechanically controlled.
+        const unsigned long max_preinfuse_time_ms = 8000;
+        if ((millis() - brewStats.start_brew_time) > max_preinfuse_time_ms) {
+            if (pressure < brew_pressure_threshold) {
+                //State::setFault(FaultState::NotHeating);
+                // TODO: How to indicate this to the user?
+            }
+        }
+
+        // Accumulate statistics
+        brewStats.avg_brew_pressure += pressure;
+        brewStats.brew_pressure_avg_count++;
+
+        // If lever is released, stop brewing
+        // State {Brewing -> Ready}
+        if (!IO::isLeverPulled()) {
+            uiState = MachineState::Ready;
+            resetIdleTimer();
+
+            UI::uiFreezeGraphs();
+
+            // Stop brew timer
+            brewStats.end_brew_time = millis();
+
+            brewStats.total_volume = SensorSampler::getTotalFlowVolume();
+
+            // if (brewStats.brew_pressure_avg_count > 0) {
+            //     brewStats.avg_brew_pressure /= (float)brewStats.brew_pressure_avg_count;
+            // }
+
+            // Switch into steaming mode (only if brew was longer than 10sec)
+            if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
+                HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
+            }
+            return;
+        }
     }
 
     // State {Ready -> Ready|Sleep}

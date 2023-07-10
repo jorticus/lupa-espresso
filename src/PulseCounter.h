@@ -1,10 +1,13 @@
 #pragma once
 
+#include <driver/pcnt.h>
+
 /// @brief Interface for counting pulses using ESP32 peripherals
 class PulseCounter
 {
 public:
-    PulseCounter()
+    PulseCounter(pcnt_unit_t unit)
+        : _unit(unit)
     { }
 
     /// @brief Set up pulse counter
@@ -22,6 +25,7 @@ public:
 protected:
     static void IRAM_ATTR timerIsr();
     static void IRAM_ATTR pinChangeIsr(void* ctx);
+    static void initTimer(int sampleWindowMs);
 
     void IRAM_ATTR onTimer();
     void IRAM_ATTR onPinChange();
@@ -39,8 +43,10 @@ protected:
     volatile unsigned long _timeDelta;
     volatile int _timeCount;
     volatile int16_t _t1;
-    hw_timer_t* _timer;
+    pcnt_unit_t _unit;
+
+    static hw_timer_t* _timer;
 };
 
 extern PulseCounter PulseCounter1;
-
+extern PulseCounter PulseCounter2;

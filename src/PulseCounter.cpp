@@ -19,7 +19,11 @@ const unsigned long MAX_TICK_DELTA_USEC = 500000;
 
 const unsigned long MIN_TICK_DELTA_USEC = 100;
 
-PulseCounter PulseCounter1;
+PulseCounter PulseCounter1 { PCNT_UNIT_0 };
+PulseCounter PulseCounter2 { PCNT_UNIT_1 };
+
+// We share a single HW timer for all PCNT units
+hw_timer_t* PulseCounter::_timer = nullptr;
 
 portMUX_TYPE timerIsrMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -34,6 +38,7 @@ extern "C"
 void IRAM_ATTR PulseCounter::timerIsr() {
     portENTER_CRITICAL_ISR(&timerIsrMux);
     PulseCounter1.onTimer();
+    // PulseCounter2.onTimer();
     portEXIT_CRITICAL_ISR(&timerIsrMux);
 }
 
@@ -43,7 +48,7 @@ void IRAM_ATTR PulseCounter::pinChangeIsr(void* ctx) {
 
 void IRAM_ATTR PulseCounter::onTimer() {
     int16_t count = 0;
-    pcnt_get_counter_value(PCNT_UNIT_0, &count);
+    pcnt_get_counter_value(this->_unit, &count);
 
     this->_count = count;
     this->_isSampleReady = true;
@@ -53,12 +58,12 @@ void IRAM_ATTR PulseCounter::onTimer() {
         setSlowMode(true);
     }
 
-    pcnt_counter_clear(PCNT_UNIT_0);
+    pcnt_counter_clear(this->_unit);
 }
 
 void IRAM_ATTR PulseCounter::onPinChange() {
     int16_t count = 0;
-    pcnt_get_counter_value(PCNT_UNIT_0, &count);
+    pcnt_get_counter_value(this->_unit, &count);
 
     if (_slowMode && (count > FAST_TICK_COUNT_THRESHOLD)) {
         Serial.printf("count %d above fast threshold\n", count);
@@ -66,7 +71,7 @@ void IRAM_ATTR PulseCounter::onPinChange() {
         return;
     }
 
-    pcnt_counter_clear(PCNT_UNIT_0);
+    pcnt_counter_clear(this->_unit);
 
     unsigned long t = esp_timer_get_time();
     unsigned long delta = t - _time;
@@ -97,7 +102,7 @@ bool PulseCounter::begin(int pin, int sampleWindowMs) {
         .neg_mode = PCNT_COUNT_INC,
         .counter_h_lim = INT16_MAX,
         .counter_l_lim = 0,
-        .unit = PCNT_UNIT_0,
+        .unit = this->_unit,
         .channel = PCNT_CHANNEL_0
     };
 
@@ -109,15 +114,26 @@ bool PulseCounter::begin(int pin, int sampleWindowMs) {
 
     setSlowMode(true);
 
-    const int timerIdx = 0;
-    const int timerDivider = 80;
-    _timer = timerBegin(timerIdx, timerDivider, true);
-    timerAttachInterrupt(_timer, &PulseCounter::timerIsr, true);
-    timerAlarmWrite(_timer, sampleWindowMs*1000, true);
-
-    pcnt_counter_clear(PCNT_UNIT_0);
-    timerAlarmEnable(_timer);
+    initTimer(sampleWindowMs);
+    pcnt_counter_clear(this->_unit);
     return true;
+}
+
+void PulseCounter::initTimer(int sampleWindowMs) {
+    // Only init timer once
+    // NOTE: Assumes sampleWindowMs is the same for all PCNT channels
+    if (_timer == nullptr) {
+        const int timerIdx = 0;
+        const int timerDivider = 80;
+
+        Serial.println("Init timer");
+
+        _timer = timerBegin(timerIdx, timerDivider, true);
+
+        timerAttachInterrupt(_timer, &PulseCounter::timerIsr, true);
+        timerAlarmWrite(_timer, sampleWindowMs*1000, true);
+        timerAlarmEnable(_timer);
+    }
 }
 
 void PulseCounter::setSlowMode(bool slow) {

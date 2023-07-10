@@ -123,17 +123,29 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
     gfx.fillCircle(x, y, 5, color);
 }
 
-void uiRenderPressureGauge(GfxCanvas& gfx) {
+void uiRenderPressureGauge(GfxCanvas& gfx, bool postbrew = false) {
     float min_pressure = 1.0f; // Ambient air pressure
     float max_pressure = PRESSURE_MAX_BAR;
     float value_norm = (SensorSampler::getPressure() - min_pressure) / (max_pressure - min_pressure);
     uiRenderGauge(gfx, value_norm, COLOUR_PRESSURE);
 
-    uiRenderLabelFormattedCentered(gfx,
-        60,
-        TFT_WHITE,
-        (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"),
-        SensorSampler::getPressure());
+    if (postbrew) {
+        float avg = 0.0f;
+        if (brewStats.brew_pressure_avg_count > 0)
+            avg = brewStats.avg_brew_pressure / brewStats.brew_pressure_avg_count;
+        uiRenderLabelFormattedCentered(gfx,
+            60,
+            TFT_WHITE,
+            "%.1f Bar",
+            avg);
+    }
+    else {
+        uiRenderLabelFormattedCentered(gfx,
+            60,
+            TFT_WHITE,
+            (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"),
+            SensorSampler::getPressure());
+    }
 }
 
 float getTemperatureMaxRange() {
@@ -163,12 +175,24 @@ void uiRenderHeaterPowerGauge(GfxCanvas& gfx) {
     uiRenderGauge(gfx, IO::getHeatPower(), COLOUR_BOILER_POWER, 15);
 }
 
-void uiRenderFlowGauge(GfxCanvas& gfx) {
+void uiRenderFlowGauge(GfxCanvas& gfx, bool postbrew = false) {
     float flow = SensorSampler::getFlowRate();
     float min_flow = 0.0f;
     float max_flow = FLOW_MAX_VALUE;
     float value_norm = (flow - min_flow) / (max_flow - min_flow);
     uiRenderGauge(gfx, value_norm, COLOUR_FLOW_RATE, 15);
+
+    //uiRenderLabelFormattedCentered(gfx, -60, TFT_RED, "%.3f", flow);
+
+    if (postbrew) {
+        uiRenderLabelFormattedCentered(gfx, 90, TFT_WHITE, "%.0f mL", brewStats.total_volume);
+    }
+    else {
+        // NOTE: Only accurate to +/- 10mL assuming system is primed
+        // Cannot fully account for volume lost to internal plumbing
+        float flow_accum = SensorSampler::getTotalFlowVolume();
+        uiRenderLabelFormattedCentered(gfx, 90, TFT_WHITE, "%.0f mL", flow_accum);
+    }
 }
 
 void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
@@ -202,11 +226,31 @@ void uiRenderPostBrewScreen(GfxCanvas& gfx)
 
     float brewTimeSec = (brewStats.end_brew_time - brewStats.start_brew_time) / 1000.0f;
 
-    int16_t y = (-(TFT_HEIGHT/2) + 60);
-    uiRenderLabelCentered(gfx, y, TFT_WHITE, "BREW TIME:");
+    // Rate the brew
+    const char* text = "DONE!";
 
-    y += 30;
-    uiRenderLabelFormattedCentered(gfx, y, TFT_WHITE, "%.1f", brewTimeSec);
+    // A proper brew should take between 10 to 60 seconds
+    if (brewTimeSec < 10.0f) {
+        text = "TOO SHORT";
+    }
+    else if (brewTimeSec > 60.0f) {
+        text = "TOO LONG";
+    }
+
+    // A proper brew should reach 8 bar ideally
+    if (brewStats.brew_pressure_avg_count > 0) {
+        const float min_required_brew_pressure = 7.0f;
+        float avg_pressure = brewStats.avg_brew_pressure / brewStats.brew_pressure_avg_count;
+        if (avg_pressure < min_required_brew_pressure) {
+            text = "NO PRESSURE";
+        }
+    } 
+
+    if (text != nullptr) {
+        uiRenderLabelCentered(gfx, 0, TFT_WHITE, text);
+    }
+
+    uiRenderLabelFormattedCentered(gfx, 30, TFT_WHITE, "%.1f s", brewTimeSec);
 }
 
 void uiRenderReadyScreen(GfxCanvas& gfx)
@@ -221,7 +265,7 @@ void uiRenderBrewingScreen(GfxCanvas& gfx) {
 
     float brewTimeSec = (millis() - brewStats.start_brew_time) / 1000.0f;
     uiRenderLabelFormattedCentered(gfx, 
-        20, 
+        30, 
         TFT_WHITE,
         "%.1f", 
         brewTimeSec);
@@ -365,6 +409,9 @@ void renderRight() {
                 case FaultState::SensorFailure:
                     status_str = "SENSOR FAILURE";
                     break;
+                case FaultState::SoftwarePanic:
+                    status_str = "FIRMWARE CRASH";
+                    break;
                 case FaultState::FirmwareUpdateFailure:
                     status_str = "UPDATE FAILED";
                     break;
@@ -391,14 +438,18 @@ void renderRight() {
             if (brewStats.start_brew_time > 0) {
                 // Show post-brew snapshot graph + brew time
                 uiRenderPostBrewScreen(gfx);
+
+                // Post-brew stats will be rendered for each gauge type
+                uiRenderPressureGauge(gfx, true);
+                uiRenderFlowGauge(gfx, true);
             }
             else {
-                uiRenderBrewGraph(gfx);
+                //uiRenderBrewGraph(gfx);
                 uiRenderReadyScreen(gfx);
+                    
+                uiRenderPressureGauge(gfx);
+                uiRenderFlowGauge(gfx);
             }
-
-            uiRenderPressureGauge(gfx);
-            uiRenderFlowGauge(gfx);
             break;
 
         case MachineState::Brewing:
