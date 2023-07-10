@@ -58,6 +58,22 @@ void setup() {
     Display::initDisplay();
     Network::initWiFi();
     OTA::initOTA();
+
+    // Enter fail-safe mode if we've encountered a firmware bug,
+    // before proceeding further. This allows us to recover via OTA.
+    auto reason = esp_reset_reason();
+    Serial.printf("Reset Reason: %d\n", reason);
+    if (reason == ESP_RST_PANIC || 
+        reason == ESP_RST_INT_WDT ||
+        reason == ESP_RST_WDT ||
+        reason == ESP_RST_TASK_WDT)
+    {
+        Serial.println("Last reset was due to FW panic, entering failsafe mode...");
+
+        State::setFault(State::FaultState::SoftwarePanic);
+        return;
+    }
+
     HomeAssistant::init();
 
     bool isSensorsInitialized = SensorSampler::initialize();
