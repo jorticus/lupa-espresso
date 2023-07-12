@@ -143,10 +143,9 @@ void processControlLoop()
 
     if (!SensorSampler::isTemperatureValid() || 
         IO::isWaterTankLow() || 
+        IO::isBoilerTankLow() ||
         (operating_profile == BoilerProfile::Off))
     {
-        // Turn off heat/pump/etc if we don't have a temperature reading
-        //IO::failsafe();
         IO::setHeat(false);
         IO::setHeatPower(0.0f);
     }

@@ -9,8 +9,14 @@
 #include "UI.h"
 #include "SensorSampler.h"
 
+// Reading is typically 0 when water is filled,
+// and ~500 when it needs filling
+const touch_value_t water_threshold_high = 300;
+const touch_value_t water_threshold_low = 50;
+
 static bool s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
+static bool s_waterLow = false;
 
 static Buttons<
     Btn<PIN_IN_POWER_BTN, HIGH>
@@ -41,8 +47,6 @@ void failsafe() {
     digitalWrite(PIN_OUT_PUMP, LOW);
     digitalWrite(PIN_OUT_FILL_SOLENOID, LOW);
 
-    //digitalWrite(TFT_BL, LOW);
-
     s_heaterPower = 0.0f;
 }
 
@@ -53,26 +57,18 @@ void initGpio() {
     pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
     pinMode(PIN_IN_WATER_LOW, INPUT_PULLDOWN);
-    //pinMode(PIN_IN_WATER_FULL, INPUT_PULLDOWN);
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
-    //pinMode(PIN_IN_WATER_FULL, INPUT);
-
-    // ledcAttachPin(PIN_IN_WATER_FULL, 1);
-    // ledcSetup(1, 333, 8);
-    // ledcWrite(1, 0x7F);
-
-    touchSetCycles(0xF000, 0xF000);
 
     buttons.onButtonPress(onButtonPress);
 
-    // Initialize touch sensor input
+    // Initialize touch sensor input, used to detect boiler water level
     // https://github.com/ESP32DE/esp-iot-solution-1/blob/master/documents/touch_pad_solution/touch_sensor_design_en.md
+    touchSetCycles(0xF000, 0xF000);
     touchRead(T0);
     touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
     
-
     failsafe();
 }
 
@@ -81,13 +77,15 @@ void process() {
 
     auto state = State::getState();
 
-    if (state == State::MachineState::Fault)
+    if (state == State::MachineState::Fault) {
+        s_waterLow = false;
         return;
+    }
 
+    // Detect the boiler water level using the touch peripheral
     static unsigned long t_last = 0;
     static unsigned long fill_counter = 0;
     static int cycle = 0;
-    static bool level_state = false;
     if ((millis() - t_last) > 500) {
         t_last = millis();
         
@@ -103,31 +101,17 @@ void process() {
                 auto water_level_raw = touchRead(T0);
                 Serial.printf("WaterLevel: %d\n", water_level_raw);
 
-                const touch_value_t water_threshold_high = 400;
-                const touch_value_t water_threshold_low = 200;
                 if (water_level_raw > water_threshold_high) {
                     if (fill_counter >= 5) {
-                        if (!level_state) {
-                            level_state = true;
-                            Serial.printf("Water level low!\n");
-
-                            // Activate water fill cycle after 5 seconds of this reading low
-                            // TODO: Move this into StateMachine.cpp
-                            State::setState(State::MachineState::FillTank);
-                        }
+                        s_waterLow = true;
                     }
                     else {
                         fill_counter++;
                     }
                 }
                 else if (water_level_raw < water_threshold_low) {
-                    if (state == State::MachineState::FillTank) {
-                        State::setState(State::MachineState::Ready);
-                        IO::setPump(false);
-                        IO::setWaterFillSolenoid(false);
-                        fill_counter = 0;
-                        level_state = false;
-                    }
+                    fill_counter = 0;
+                    s_waterLow = false;
                 }
 
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
@@ -141,41 +125,30 @@ void process() {
                 break;
         }
     }
-
-    
-    // if (state == State::MachineState::Ready ||
-    //     state == State::MachineState::Brewing)
-    if (state != State::MachineState::Off)
-    {
-        bool lever = (digitalRead(PIN_IN_LEVER) == HIGH);
-        digitalWrite(PIN_OUT_PUMP, lever);
-    }
-    else{
-        digitalWrite(PIN_OUT_PUMP, LOW);
-    }
 }
 
 bool isWaterTankLow() {
     return (digitalRead(PIN_IN_WATER_LOW) == LOW);
 }
 
+bool isBoilerTankLow() {
+    return s_waterLow;
+}
+
 bool isLeverPulled() {
+    return (digitalRead(PIN_IN_LEVER) == HIGH);
+}
 
-    //return (digitalRead(PIN_IN_LEVER) == HIGH);
-
-    // Detect lever by measuring water flow
+bool isBrewing() {
     return (
         (State::uiState != State::MachineState::Preheat) && 
+        (State::uiState != State::MachineState::FillTank) &&
         SensorSampler::isFlowing()
     );
-
-    //return (digitalRead(PIN_IN_LEVER) == HIGH);
-    // TODO: Debouncing
-    return false;
 }
 
 void setHeatPower(float duty) {
-    // TODO
+    // TODO: Use this for setting heater PWM
     s_heaterPower = duty;
 }
 

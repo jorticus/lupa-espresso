@@ -31,7 +31,8 @@ static const char* UiState_Str[] = {
     "Sensor Test",
     "Firmware Update",
     "Sleep",
-    "Tuning"
+    "Tuning",
+    "Fill Tank"
 };
 
 void setState(MachineState state) {
@@ -158,7 +159,9 @@ void processState()
 
     // If water tank is low, indicate fault
     // State {Ready|Preheat -> Fault}
-    if (uiState != MachineState::Off && uiState != MachineState::Brewing) {
+    if (uiState != MachineState::Off && 
+        uiState != MachineState::Brewing) // Allow brew to complete by excluding this state from the fault
+    {
         if (IO::isWaterTankLow()) {
             uiFault = FaultState::LowWater;
             uiState = MachineState::Fault;
@@ -209,8 +212,13 @@ void processState()
         return;
     }
 
-    // If lever is actuated at any time, move to brew phase.
-    if ((uiState != MachineState::Brewing) && (uiState != MachineState::FillTank) && IO::isLeverPulled()) {
+    // Move to brew phase when a brew begins
+    if ((uiState != MachineState::Brewing) && 
+        (uiState != MachineState::FillTank) && 
+        IO::isBrewing()
+        //IO::isLeverPulled()
+        )
+    {
         if (uiState == MachineState::Sleep) {
             // Wake from sleep, go to preheat if not yet hot enough
             // State {Sleep -> Preheat}
@@ -222,7 +230,7 @@ void processState()
         }
 
         // State {Preheat|Ready -> Brewing}
-        uiState = MachineState::Brewing; // TODO: Should this actually be setState()?
+        uiState = MachineState::Brewing;
         resetIdleTimer();
         auto t_now = millis();
 
@@ -322,12 +330,36 @@ void processState()
         }
     }
 
+    // Fill cycle when boiler level is low
     if (uiState == MachineState::FillTank) {
-        IO::setWaterFillSolenoid(true);
-        IO::setPump(true);
+        if (!IO::isBoilerTankLow()) {
+            // Tank filled, return {FillTank->Ready}
+            uiState = MachineState::Ready;
+            IO::setPump(false);
+            IO::setWaterFillSolenoid(false);
+        }
     }
-    else {
-        IO::setWaterFillSolenoid(false);
+    else if (uiState != MachineState::Off) {
+        if (IO::isBoilerTankLow()) {
+            uiState = MachineState::FillTank;
+            Serial.println("Boiler tank is low, activating fill cycle\n");
+
+            IO::setWaterFillSolenoid(true);
+            IO::setPump(true);
+        }
+    }
+
+    // Activate pump when lever pulled.
+    // This is separate from the Brewing state logic to keep things simple.
+    // In the future we could modulate the pump to give flow or pressure control.
+    if (uiState == State::MachineState::Ready ||
+        uiState == State::MachineState::Brewing ||
+        uiState == State::MachineState::Preheat)
+    {
+        IO::setPump(IO::isLeverPulled());
+    }
+    else if (uiState != MachineState::FillTank) {
+        IO::setPump(false);
     }
 }
 

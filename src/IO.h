@@ -12,16 +12,23 @@ namespace IO {
     /// @brief Put the machine into a safe configuration (heaters off, etc)
     void failsafe();
 
-    
 // Inputs
 
-    /// @brief Water tank low status indicator
+    /// @brief Water tank low sensor
     /// @return true if water tank is low
     bool isWaterTankLow();
+
+    /// @brief Boiler tank low sensor
+    /// @return true if boiler tank is low
+    bool isBoilerTankLow();
 
     /// @brief Lever pull state
     /// @return true if lever is pulled
     bool isLeverPulled();
+
+    /// @brief Brewing state
+    /// @return true if water is flowing to the grouphead
+    bool isBrewing();
 
 // Outputs
 
