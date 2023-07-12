@@ -210,7 +210,7 @@ void processState()
     }
 
     // If lever is actuated at any time, move to brew phase.
-    if ((uiState != MachineState::Brewing) && IO::isLeverPulled()) {
+    if ((uiState != MachineState::Brewing) && (uiState != MachineState::FillTank) && IO::isLeverPulled()) {
         if (uiState == MachineState::Sleep) {
             // Wake from sleep, go to preheat if not yet hot enough
             // State {Sleep -> Preheat}
@@ -222,7 +222,7 @@ void processState()
         }
 
         // State {Preheat|Ready -> Brewing}
-        uiState = MachineState::Brewing;
+        uiState = MachineState::Brewing; // TODO: Should this actually be setState()?
         resetIdleTimer();
         auto t_now = millis();
 
@@ -320,6 +320,14 @@ void processState()
             Serial.println("Idle timeout - going to sleep");
             uiState = MachineState::Sleep;
         }
+    }
+
+    if (uiState == MachineState::FillTank) {
+        IO::setWaterFillSolenoid(true);
+        IO::setPump(true);
+    }
+    else {
+        IO::setWaterFillSolenoid(false);
     }
 }
 

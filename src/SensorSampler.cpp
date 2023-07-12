@@ -236,7 +236,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
             // flow into the system (flow1) minus the flow out of the system (flow2),
             // though this does not account for filling of the preinfusion chamber.
             //auto diff = (flow1_hz - flow2_hz);
-            Serial.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
+            //Serial.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
 
             // The combined flowrate is a value between 0.0 and 1.0
             //filter_flowrate.add(diff);

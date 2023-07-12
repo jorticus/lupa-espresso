@@ -146,7 +146,9 @@ void processControlLoop()
         (operating_profile == BoilerProfile::Off))
     {
         // Turn off heat/pump/etc if we don't have a temperature reading
-        IO::failsafe();
+        //IO::failsafe();
+        IO::setHeat(false);
+        IO::setHeatPower(0.0f);
     }
     else {
         float pid_input = SensorSampler::getTemperature();

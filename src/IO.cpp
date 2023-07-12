@@ -52,7 +52,7 @@ void initGpio() {
 
     pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
-    pinMode(PIN_IN_WATER_LOW, INPUT_PULLUP);
+    pinMode(PIN_IN_WATER_LOW, INPUT_PULLDOWN);
     //pinMode(PIN_IN_WATER_FULL, INPUT_PULLDOWN);
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
@@ -79,9 +79,16 @@ void initGpio() {
 void process() {
     buttons.process();
 
+    auto state = State::getState();
+
+    if (state == State::MachineState::Fault)
+        return;
+
     static unsigned long t_last = 0;
+    static unsigned long fill_counter = 0;
     static int cycle = 0;
-    if ((millis() - t_last) > 1000) {
+    static bool level_state = false;
+    if ((millis() - t_last) > 500) {
         t_last = millis();
         
         switch (cycle++) {
@@ -92,28 +99,64 @@ void process() {
                 break;
 
             case 1: // Read touch channel and turn off sampling
-                Serial.printf("Touch: %d\n", touchRead(T0));
+            {
+                auto water_level_raw = touchRead(T0);
+                Serial.printf("WaterLevel: %d\n", water_level_raw);
 
-                // TODO: Need to average 10 samples to filter out spikes
-                // Generally this reads 0 when full, and ~80 when empty
+                const touch_value_t water_threshold_high = 400;
+                const touch_value_t water_threshold_low = 200;
+                if (water_level_raw > water_threshold_high) {
+                    if (fill_counter >= 5) {
+                        if (!level_state) {
+                            level_state = true;
+                            Serial.printf("Water level low!\n");
+
+                            // Activate water fill cycle after 5 seconds of this reading low
+                            // TODO: Move this into StateMachine.cpp
+                            State::setState(State::MachineState::FillTank);
+                        }
+                    }
+                    else {
+                        fill_counter++;
+                    }
+                }
+                else if (water_level_raw < water_threshold_low) {
+                    if (state == State::MachineState::FillTank) {
+                        State::setState(State::MachineState::Ready);
+                        IO::setPump(false);
+                        IO::setWaterFillSolenoid(false);
+                        fill_counter = 0;
+                        level_state = false;
+                    }
+                }
 
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
                 touch_pad_filter_stop();
                 cycle = 0;
                 break;
+            }
 
             default:
                 cycle = 0;
                 break;
         }
-        
+    }
 
-        
+    
+    // if (state == State::MachineState::Ready ||
+    //     state == State::MachineState::Brewing)
+    if (state != State::MachineState::Off)
+    {
+        bool lever = (digitalRead(PIN_IN_LEVER) == HIGH);
+        digitalWrite(PIN_OUT_PUMP, lever);
+    }
+    else{
+        digitalWrite(PIN_OUT_PUMP, LOW);
     }
 }
 
 bool isWaterTankLow() {
-    return (digitalRead(PIN_IN_WATER_LOW) == HIGH);
+    return (digitalRead(PIN_IN_WATER_LOW) == LOW);
 }
 
 bool isLeverPulled() {
@@ -154,6 +197,11 @@ void setHeat(bool en) {
 
     prev_value = en;
     s_isHeaterOn = en;
+}
+
+void setPump(bool en) {
+    digitalWrite(PIN_OUT_PUMP, en);
+    // TODO: Set a watchdog timer that turns this off after X seconds
 }
 
 void setWaterFillSolenoid(bool en) {

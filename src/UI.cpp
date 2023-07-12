@@ -315,7 +315,7 @@ void uiRenderSensorTest()
     uiRenderLabelFormattedCentered(gfx_left, 
         0,
         TFT_RED,
-        (SensorSampler::isFlowRateValid() ? "%.2f C" : "- C"),
+        (SensorSampler::isFlowRateValid() ? "%.2f mL" : "- mL"),
         SensorSampler::getTotalFlowVolume());
 
     uiRenderTemperatureGauge(gfx_left);
@@ -330,7 +330,7 @@ void renderLeft() {
     float t_boiler = SensorSampler::getTemperature();
 
     // Render current temperature
-    bool is_t_valid = SensorSampler::isTemperatureValid() && (t_boiler > 20.0f);
+    bool is_t_valid = SensorSampler::isTemperatureValid() && (t_boiler > 1.0f);
     uiRenderLabelFormattedCentered(gfx,
         (TFT_HEIGHT/2 - 60),
         TFT_WHITE,
@@ -458,6 +458,11 @@ void renderRight() {
             
             uiRenderPressureGauge(gfx);
             uiRenderFlowGauge(gfx);
+            break;
+
+        case MachineState::FillTank:
+            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            uiRenderStatusRing(gfx, "FILLING", TFT_YELLOW, ring_w);
             break;
 
         case MachineState::Sleep:
