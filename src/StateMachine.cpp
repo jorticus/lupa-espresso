@@ -64,6 +64,147 @@ void resetIdleTimer() {
     t_idle_start = millis();
 }
 
+void setPowerControl(bool pwr)
+{
+    Serial.print("POWER: ");
+    Serial.println(pwr ? "ON" : "OFF");
+
+    if (pwr) {
+        if (uiState == MachineState::Off || uiState == MachineState::Sleep) {
+            uiState = MachineState::Preheat;
+            resetIdleTimer();
+        }
+    }
+    else {
+        uiState = MachineState::Off;
+    }
+
+    // Force an update of state before returning to ensure
+    // we're in the right state before updating the UI,
+    // as machine may be faulted, or already preheated, etc.
+    processState();
+}
+
+/// @brief Detect faults and enter a faulted state if needed
+void detectFaults()
+{
+    if (IO::isWaterTankLow()) {
+        uiFault = FaultState::LowWater;
+        uiState = MachineState::Fault;
+        return;
+    }
+}
+
+/// @brief Determine if temperature is within the allowable PID tuning range
+/// @param t Current boiler temperature
+/// @return true if temperature is in range of PID tune
+bool isTemperatureInTuningRange(float t) {
+    // PID tuning mode, wait until we get close to the PID control range
+    return (t >= (CONFIG_BOILER_TUNING_TEMPERATURE_C - CONFIG_BOILER_PID_RANGE_C));
+}
+
+/// @brief Begin a brew
+void beginBrew()
+{
+    resetIdleTimer();
+    auto t_now = millis();
+
+    // De-bounce
+    // (prevent another shot from being registered if lever is quickly released and pulled again)
+    if ((brewStats.end_brew_time > 0) && ((t_now - brewStats.end_brew_time) < lever_debounce_interval_ms)) {
+        return;
+    }
+
+    // Restart brew timer
+    brewStats.start_brew_time = t_now;
+    brewStats.end_brew_time = 0;
+    brewStats.preinfuse_volume = 0;
+    brewStats.total_volume = 0;
+    brewStats.avg_brew_pressure = 0.0f;
+    brewStats.brew_pressure_avg_count = 0;
+
+    // Reset flow accumulation
+    SensorSampler::resetFlowCounter();
+}
+
+/// @brief End a brew
+void endBrew()
+{
+    resetIdleTimer();
+
+    UI::uiFreezeGraphs();
+
+    // Stop brew timer
+    brewStats.end_brew_time = millis();
+
+    brewStats.total_volume = SensorSampler::getTotalFlowVolume();
+
+    // Switch into steaming mode (only if brew was longer than 10sec)
+    if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
+        HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
+    }
+}
+
+/// @brief Process brewing state
+void stateBrew()
+{
+    float pressure = SensorSampler::getPressure();
+
+    // Detect end of pre-infusion by looking at when the pressure goes above a threshold
+    const float brew_pressure_threshold = 7.5f;
+    if ((brewStats.preinfuse_volume < 0.01f) && (pressure > brew_pressure_threshold)) {
+        brewStats.preinfuse_volume = SensorSampler::getTotalFlowVolume();
+        SensorSampler::resetFlowCounter();
+        brewStats.avg_brew_pressure = 0.0f;
+        brewStats.brew_pressure_avg_count = 0;
+        // TODO: With blank inserted, this still accumulates about 6mL
+    }
+
+    // Detect not getting up to pressure
+    // Usually preinfusion lasts 6-7 seconds, but this is mechanically controlled.
+    const unsigned long max_preinfuse_time_ms = 8000;
+    if ((millis() - brewStats.start_brew_time) > max_preinfuse_time_ms) {
+        if (pressure < brew_pressure_threshold) {
+            //State::setFault(FaultState::NotHeating);
+            // TODO: How to indicate this to the user?
+        }
+    }
+
+    // Accumulate statistics
+    brewStats.avg_brew_pressure += pressure;
+    brewStats.brew_pressure_avg_count++;
+}
+
+/// @brief Exit the post-brew phase
+void resetPostBrew() {
+    // Reset ready page after some timeout
+    brewStats.end_brew_time = 0;
+    brewStats.start_brew_time = 0;
+
+    resetIdleTimer();
+}
+
+bool isIdleTimeoutElapsed() {
+    return ((t_idle_start > 0) && (CONFIG_IDLE_TIMEOUT_MS > 0) &&
+        ((millis() - t_idle_start) >= (unsigned long)CONFIG_IDLE_TIMEOUT_MS));
+}
+
+bool isPostBrewTimeoutElapsed() {
+    return ((brewStats.end_brew_time > 0) && 
+        ((millis() - brewStats.end_brew_time) >= (unsigned long)CONFIG_BREW_FINISH_TIMEOUT_MS));
+}
+
+void beginFillTankCycle()
+{
+    Serial.println("Boiler tank is low, activating fill cycle\n");
+
+    IO::setWaterFillSolenoid(true);
+    IO::setPump(true);
+}
+
+/// @brief One time trigger on state transition
+/// @param lastState The previous state
+/// @param newState The new state
 void onStateChanged(MachineState lastState, MachineState newState) {
 
     // Detect and handle sleep state
@@ -84,10 +225,17 @@ void onStateChanged(MachineState lastState, MachineState newState) {
             UI::triggerAnimation(UI::Anim::PowerOff);
             break;
 
+        case MachineState::Brewing:
+            beginBrew();
+            break;
+
+        case MachineState::FillTank:
+            beginFillTankCycle();
+            break;
+
         case MachineState::Tuning:
             HeatControl::setProfile(HeatControl::BoilerProfile::Tuning);
             // Fall through to default...
-
         default:
             if (lastState == MachineState::Off) {
                 // When transitioning from Off->On, start the power-on animation.
@@ -110,27 +258,7 @@ void onStateChanged(MachineState lastState, MachineState newState) {
     }
 }
 
-void setPowerControl(bool pwr)
-{
-    Serial.print("POWER: ");
-    Serial.println(pwr ? "ON" : "OFF");
-
-    if (pwr) {
-        if (uiState == MachineState::Off || uiState == MachineState::Sleep) {
-            uiState = MachineState::Preheat;
-            resetIdleTimer();
-        }
-    }
-    else {
-        uiState = MachineState::Off;
-    }
-
-    // Force an update of state before returning to ensure
-    // we're in the right state before updating the UI,
-    // as machine may be faulted, or already preheated, etc.
-    processState();
-}
-
+/// @brief Main state machine processing block
 void processState()
 {
     static MachineState _lastUiState = MachineState::Init;
@@ -140,226 +268,135 @@ void processState()
         _lastUiState = uiState;
     }
 
-    if (uiState == MachineState::Off || uiState == MachineState::FirmwareUpdate) {
-        return;
-    }
+    // The state machine is structured by processing each state,
+    // determining if a state change needs to happen,
+    // and optionally performing an action on the transition to the new state.
+    switch (uiState) {
+        case MachineState::Init:
+        case MachineState::Off:
+            // Machine is off. State change to on is handled in IO.cpp via button event
+            break;
 
-    // NOTE: Process faults first.
+        case MachineState::FirmwareUpdate:
+            // Nothing to do in firmware update mode
+            break;
 
-/*
-    if (uiState != MachineState::SensorTest && 
-        (!values.f_valid || !values.p_valid || !values.t_valid))
-    {
-        uiFault = FaultState::SensorFailure;
-        uiState = MachineState::Fault;
-        return;
-    }
-*/
-
-
-    // If water tank is low, indicate fault
-    // State {Ready|Preheat -> Fault}
-    if (uiState != MachineState::Off && 
-        uiState != MachineState::Brewing) // Allow brew to complete by excluding this state from the fault
-    {
-        if (IO::isWaterTankLow()) {
-            uiFault = FaultState::LowWater;
-            uiState = MachineState::Fault;
-            return;
-        }
-    }
-
-
-    // State {Preheat -> Sleep|Ready}
-    if (uiState == MachineState::Preheat) {
-        // Device is ready once temperature rises above the configured threshold
-        if (SensorSampler::isTemperatureValid()) {
-            auto t = SensorSampler::getTemperature();
-            // PID tuning mode, wait until we get close to the PID control range
-            if (CONFIG_DO_PID_TUNE) {
-                if (t >= (CONFIG_BOILER_TUNING_TEMPERATURE_C - CONFIG_BOILER_PID_RANGE_C)) {
-                    Serial.println("Begin PID tuning...");
-                    uiState = MachineState::Tuning;
-                    return;
+        // NOTE: Sleep state is currently unused.
+        // This is supposed to put the device into a lower power state that keeps the boiler warm but ready to heat back up to full temperature.
+        // Measurements showed this doesn't save much power.
+        case MachineState::Sleep:
+            if (IO::isBrewing() || IO::isLeverPulled()) {
+                // When waking from sleep, go to preheat state if we're not yet up to temperature
+                if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() < PREHEAT_TEMPERATURE_C)) {
+                    uiState = MachineState::Preheat;
+                    resetIdleTimer();
+                }
+                else {
+                    uiState = MachineState::Brewing;
                 }
             }
-            // Up to sleeping temperature, go to sleep
-            // State {Preheat -> Sleep}
-            else if (t > CONFIG_BOILER_IDLE_TEMPERATURE_C && CONFIG_IDLE_AFTER_PREHEAT) {
+            break;
+
+
+        case MachineState::Preheat:
+            detectFaults();
+
+            if (SensorSampler::isTemperatureValid()) {
+                auto t = SensorSampler::getTemperature();
+                if (CONFIG_DO_PID_TUNE && isTemperatureInTuningRange(t)) {
+                    Serial.println("Begin PID tuning...");
+                    uiState = MachineState::Tuning;
+                }
+                // Up to sleeping temperature, go to sleep
+                else if (CONFIG_IDLE_AFTER_PREHEAT && (t > CONFIG_BOILER_IDLE_TEMPERATURE_C)) {
+                    uiState = MachineState::Sleep;
+                }
+                // Close to boiler temperature, go to ready
+                else if (t >= PREHEAT_TEMPERATURE_C) {
+                    uiState = MachineState::Ready;
+                    resetIdleTimer();
+                }
+            }
+
+            if (IO::isBoilerTankLow()) {
+                uiState = MachineState::FillTank;
+            }
+            if (IO::isBrewing()) {
+                // (Won't result in a good brew, but allow this for testing / flushing the system)
+                uiState = MachineState::Brewing;
+            }
+            break;
+
+
+        case MachineState::Ready:
+            detectFaults();
+
+            if (isIdleTimeoutElapsed()) {
+                Serial.println("Idle timeout - going to sleep");
                 uiState = MachineState::Sleep;
             }
-            // Close to boiler temperature, go to ready
-            // State {Preheat -> Ready}
-            else if (t >= PREHEAT_TEMPERATURE_C) {
-                uiState = MachineState::Ready;
-                resetIdleTimer();
+
+            // After post-brew timeout, return from steam to regular brew profile
+            if (isPostBrewTimeoutElapsed()) {
+                resetPostBrew();
+                HeatControl::setProfile(HeatControl::BoilerProfile::Brew);
             }
-        }
-    }
 
-    if (uiState == MachineState::Fault) {
-        // If fault was low tank, and tank is no longer low, clear the fault
-        // State {Fault -> Preheat}
-        if (uiFault == FaultState::LowWater && !IO::isWaterTankLow()) {
-            uiFault = FaultState::NoFault;
-            uiState = MachineState::Preheat;
-            resetIdleTimer();
-        }
-    }
+            if (IO::isBoilerTankLow()) {
+                uiState = MachineState::FillTank;
+            }
+            if (IO::isBrewing()) {
+                uiState = MachineState::Brewing;
+            }
+            break;
 
-    // Deactivate regular machine logic in PID tuning mode
-    if (CONFIG_DO_PID_TUNE) {
-        return;
-    }
 
-    // Move to brew phase when a brew begins
-    if ((uiState != MachineState::Brewing) && 
-        (uiState != MachineState::FillTank) && 
-        IO::isBrewing()
-        //IO::isLeverPulled()
-        )
-    {
-        if (uiState == MachineState::Sleep) {
-            // Wake from sleep, go to preheat if not yet hot enough
-            // State {Sleep -> Preheat}
-            if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() < PREHEAT_TEMPERATURE_C)) {
+        case MachineState::Brewing:
+            // NOTE: Deliberately not checking boiler tank or faults
+            // so we can finish the shot.
+            // TODO: But we may still want to detect any absolutely critical faults...
+            //detectFaults();
+            stateBrew();
+
+            // If lever is released, stop brewing
+            if (!IO::isBrewing()) {
+                endBrew();
+                uiState = MachineState::Ready;
+            }
+            break;
+
+
+        case MachineState::Fault:
+            // If fault was low tank, and tank is no longer low, clear the fault.
+            // Go directly to the preheat phase in case we're not up to temp,
+            // since preheat will transition to ready if we are able to.
+            // Transition Fault -> Preheat (-> Ready)
+            if (uiFault == FaultState::LowWater && !IO::isWaterTankLow()) {
+                uiFault = FaultState::NoFault;
                 uiState = MachineState::Preheat;
                 resetIdleTimer();
-                return;
             }
-        }
+            break;
 
-        // State {Preheat|Ready -> Brewing}
-        uiState = MachineState::Brewing;
-        resetIdleTimer();
-        auto t_now = millis();
 
-        // De-bounce
-        // (prevent another shot from being registered if lever is quickly released and pulled again)
-        if ((brewStats.end_brew_time > 0) && ((t_now - brewStats.end_brew_time) < lever_debounce_interval_ms)) {
-            return;
-        }
+        case MachineState::SensorTest:
+            detectFaults();
+            break;
 
-        // Restart brew timer
-        brewStats.start_brew_time = t_now;
-        brewStats.end_brew_time = 0;
-        brewStats.preinfuse_volume = 0;
-        brewStats.total_volume = 0;
-        brewStats.avg_brew_pressure = 0.0f;
-        brewStats.brew_pressure_avg_count = 0;
 
-        // Reset flow accumulation
-        SensorSampler::resetFlowCounter();
+        case MachineState::FillTank:
+            // This state is entered when we need to fill the boiler tank.
+            // Brewing is not allowed during this time.
+            detectFaults();
 
-        return;
-    }
+            if (!IO::isBoilerTankLow()) {
+                // Boiler tank is now full
+                uiState = MachineState::Ready;
 
-    if (uiState == MachineState::Brewing) {
-        float pressure = SensorSampler::getPressure();
-
-        // Detect end of pre-infusion by looking at when the pressure goes above a threshold
-        const float brew_pressure_threshold = 7.5f;
-        if ((brewStats.preinfuse_volume < 0.01f) && (pressure > brew_pressure_threshold)) {
-            brewStats.preinfuse_volume = SensorSampler::getTotalFlowVolume();
-            SensorSampler::resetFlowCounter();
-            brewStats.avg_brew_pressure = 0.0f;
-            brewStats.brew_pressure_avg_count = 0;
-            // TODO: With blank inserted, this still accumulates about 6mL
-        }
-
-        // Detect not getting up to pressure
-        // Usually preinfusion lasts 6-7 seconds, but this is mechanically controlled.
-        const unsigned long max_preinfuse_time_ms = 8000;
-        if ((millis() - brewStats.start_brew_time) > max_preinfuse_time_ms) {
-            if (pressure < brew_pressure_threshold) {
-                //State::setFault(FaultState::NotHeating);
-                // TODO: How to indicate this to the user?
+                IO::setPump(false);
+                IO::setWaterFillSolenoid(false);
             }
-        }
-
-        // Accumulate statistics
-        brewStats.avg_brew_pressure += pressure;
-        brewStats.brew_pressure_avg_count++;
-
-        // If lever is released, stop brewing
-        // State {Brewing -> Ready}
-        if (!IO::isLeverPulled()) {
-            uiState = MachineState::Ready;
-            resetIdleTimer();
-
-            UI::uiFreezeGraphs();
-
-            // Stop brew timer
-            brewStats.end_brew_time = millis();
-
-            brewStats.total_volume = SensorSampler::getTotalFlowVolume();
-
-            // if (brewStats.brew_pressure_avg_count > 0) {
-            //     brewStats.avg_brew_pressure /= (float)brewStats.brew_pressure_avg_count;
-            // }
-
-            // Switch into steaming mode (only if brew was longer than 10sec)
-            if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
-                HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
-            }
-            return;
-        }
-    }
-
-    // State {Ready -> Ready|Sleep}
-    if (uiState == MachineState::Ready) {
-
-        if ((brewStats.end_brew_time > 0) && 
-            ((millis() - brewStats.end_brew_time) >= (unsigned long)CONFIG_BREW_FINISH_TIMEOUT_MS))
-        {
-            // Reset ready page after some timeout
-            brewStats.end_brew_time = 0;
-            brewStats.start_brew_time = 0;
-
-            // Return to brew mode
-            HeatControl::setProfile(HeatControl::BoilerProfile::Brew);
-            resetIdleTimer();
-        }
-
-        if ((t_idle_start > 0) && (CONFIG_IDLE_TIMEOUT_MS > 0) &&
-            ((millis() - t_idle_start) >= (unsigned long)CONFIG_IDLE_TIMEOUT_MS))
-        {
-            // Go to sleep after idle timeout
-            Serial.println("Idle timeout - going to sleep");
-            uiState = MachineState::Sleep;
-        }
-    }
-
-    // Fill cycle when boiler level is low
-    if (uiState == MachineState::FillTank) {
-        if (!IO::isBoilerTankLow()) {
-            // Tank filled, return {FillTank->Ready}
-            uiState = MachineState::Ready;
-            IO::setPump(false);
-            IO::setWaterFillSolenoid(false);
-        }
-    }
-    else if (uiState != MachineState::Off) {
-        if (IO::isBoilerTankLow()) {
-            uiState = MachineState::FillTank;
-            Serial.println("Boiler tank is low, activating fill cycle\n");
-
-            IO::setWaterFillSolenoid(true);
-            IO::setPump(true);
-        }
-    }
-
-    // Activate pump when lever pulled.
-    // This is separate from the Brewing state logic to keep things simple.
-    // In the future we could modulate the pump to give flow or pressure control.
-    if (uiState == State::MachineState::Ready ||
-        uiState == State::MachineState::Brewing ||
-        uiState == State::MachineState::Preheat)
-    {
-        IO::setPump(IO::isLeverPulled());
-    }
-    else if (uiState != MachineState::FillTank) {
-        IO::setPump(false);
+            break;
     }
 }
 

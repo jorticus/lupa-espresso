@@ -125,6 +125,20 @@ void process() {
                 break;
         }
     }
+
+
+    // Activate pump when lever pulled.
+    // This is separate from the Brewing state logic to keep things simple.
+    // In the future we could modulate the pump to give flow or pressure control.
+    if (state == State::MachineState::Ready ||
+        state == State::MachineState::Brewing ||
+        state == State::MachineState::Preheat)
+    {
+        IO::setPump(IO::isLeverPulled());
+    }
+    else if (state != State::MachineState::FillTank) {
+        IO::setPump(false);
+    }
 }
 
 bool isWaterTankLow() {
