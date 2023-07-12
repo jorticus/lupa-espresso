@@ -4,17 +4,9 @@
 
 #define GC9A01_DRIVER
 
-// #define TFT_MOSI 23 // "SDA"
-// #define TFT_SCLK 18 // "SCL"
-// #define TFT_CS   22
-// #define TFT_DC   15
-// #define TFT_RST  33
-
 #define TFT_MOSI 13 // "SDA"
 #define TFT_MISO 12 // Not used by TFT, but needed by MAX ADC
 #define TFT_SCLK 14 // "SCL"
-//#define TFT_CS   33
-//#define TFT_CS   (tft_cs_pin)
 #define TFT_CS  -1
 #define TFT_DC  27
 #define TFT_RST -1

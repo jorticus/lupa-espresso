@@ -18,11 +18,13 @@ void initDisplay() {
 
     digitalWrite(TFT_CS_LEFT, LOW);
     tft.begin();
+    tft.setRotation(2);
     tft.fillScreen(TFT_BLACK);
     digitalWrite(TFT_CS_LEFT, HIGH);
 
     digitalWrite(TFT_CS_RIGHT, LOW);
     tft.begin();
+    tft.setRotation(2);
     tft.fillScreen(TFT_BLACK);
     digitalWrite(TFT_CS_RIGHT, HIGH);
 
