@@ -82,7 +82,9 @@ void setup() {
 
     SensorSampler::start();
     
-    State::setState(State::MachineState::Preheat);
+    // Power-on state:
+    //State::setState(State::MachineState::Preheat);
+    State::setState(State::MachineState::Off);
     //State::setState(MachineState::SensorTest);
 
     // If sensors could not be initialized, indicate fault
