@@ -83,6 +83,7 @@ void initWiFi()
         Serial.println();
 
         WiFi.mode(WIFI_STA);
+        WiFi.setSleep(WIFI_PS_NONE);
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
         WiFi.setHostname(secrets::device_name);
         WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
@@ -109,9 +110,11 @@ void initWiFi()
 #else
     Serial.println("Connecting WiFi...");
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(WIFI_PS_NONE);
     WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
     WiFi.setHostname(secrets::device_name);
     WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+    
     //Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
     //WiFi.waitForConnectResult();
 #endif
@@ -132,6 +135,7 @@ void handle() {
             t_last = millis();
             Serial.println("WiFi connection lost, reconnecting...");
             WiFi.mode(WIFI_STA);
+            WiFi.setSleep(WIFI_PS_NONE);
             WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
             WiFi.setHostname(secrets::device_name);
             WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
