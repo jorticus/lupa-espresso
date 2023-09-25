@@ -176,7 +176,7 @@ void processControlLoop()
                 if (flow > 1.0f) {
                     // Perturb the PID controller error to predict 
                     // the fact that the temperature will start to decrease soon.
-                    offset = 20.0f;
+                    //offset = 20.0f;
                 }
             }
             pid.setPerturbationOffset(offset);
