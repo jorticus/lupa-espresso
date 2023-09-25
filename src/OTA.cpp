@@ -5,6 +5,7 @@
 #include "UI.h"
 #include "StateMachine.h"
 #include "secrets.h"
+#include <esp_task_wdt.h>
 
 using namespace Display;
 
@@ -89,11 +90,16 @@ void initOTA() {
         Display::setBrightness(1.0f);
 		Serial.println("OTA Initiated");
 
+        esp_task_wdt_reset();
+
         uiRenderFirmwareUpdate(OtaState::Begin, 0);
 	});
 
 	ArduinoOTA.onEnd([]() {
 		Serial.println("OTA Done!");
+
+        esp_task_wdt_reset();
+
         uiRenderFirmwareUpdate(OtaState::Success, 100);
 	});
 
@@ -106,6 +112,8 @@ void initOTA() {
             int p = (progress * 100) / total;
             uiRenderFirmwareUpdate(OtaState::Progress, p);
         }
+
+        esp_task_wdt_reset();
 	});
 
 	ArduinoOTA.onError([](ota_error_t error) {
@@ -113,6 +121,8 @@ void initOTA() {
 		Serial.printf("Error[%u]: ", error);
         
         State::setFault(State::FaultState::FirmwareUpdateFailure);
+
+        esp_task_wdt_reset();
 
 		if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
 		else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");

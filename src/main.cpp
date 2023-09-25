@@ -23,6 +23,9 @@
 #include "Network.h"
 #include "OTA.h"
 #include "HomeAssistant.h"
+#include <esp_task_wdt.h>
+
+#define WDT_TIMEOUT 1
 
 Stream& Debug = Serial;
 
@@ -94,12 +97,17 @@ void setup() {
         return;
     }
 
+    // Enable watchdog timer
+    esp_task_wdt_init(WDT_TIMEOUT, true);
+    esp_task_wdt_add(NULL); //add current thread to WDT watch
 
     Serial.println("Done!");
 }
 
 void loop()
 {
+    esp_task_wdt_reset();
+
     Network::handle();
     OTA::handle();
     IO::process();
