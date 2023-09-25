@@ -11,8 +11,8 @@
 
 // Reading is typically 0 when water is filled,
 // and ~500 when it needs filling
-const touch_value_t water_threshold_high = 300;
-const touch_value_t water_threshold_low = 50;
+const touch_value_t water_threshold_high = 20;
+const touch_value_t water_threshold_low = 10;
 
 static bool s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
