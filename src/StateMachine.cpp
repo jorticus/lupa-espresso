@@ -390,8 +390,10 @@ void processState()
             detectFaults();
 
             if (!IO::isBoilerTankLow()) {
-                // Boiler tank is now full
-                uiState = MachineState::Ready;
+                // Boiler tank is now full.
+                // Go to preheat in case we are still preheating,
+                // otherwise preheat will transition directly to Ready.
+                uiState = MachineState::Preheat;
 
                 IO::setPump(false);
                 IO::setWaterFillSolenoid(false);
