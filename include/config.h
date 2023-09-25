@@ -1,12 +1,12 @@
 #pragma once
 
 // Target boiler temperature for brewing (BoilerProfile::Brew)
-//#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
-#define CONFIG_BOILER_TEMPERATURE_C (117.0f) // ~96C on grouphead
+#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
+//#define CONFIG_BOILER_TEMPERATURE_C (117.0f) // ~96C on grouphead
 //#define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
 
 // Target boiler temperature for steaming (BoilerProfile::Steam)
-#define CONFIG_BOILER_STEAM_TEMPERATURE_C (123.0f)
+#define CONFIG_BOILER_STEAM_TEMPERATURE_C (120.0f)
 
 // Target boiler temperature in idle mode (BoilerProfile::Idle)
 #define CONFIG_BOILER_IDLE_TEMPERATURE_C (60.0f)
