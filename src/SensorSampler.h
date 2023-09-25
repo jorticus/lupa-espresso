@@ -24,6 +24,9 @@ namespace SensorSampler {
     /// @return Temperature, in degC
     float getTemperature();
 
+    /// @brief Whether temperature is at target and has stabilized
+    bool isTemperatureStabilized();
+
     /// @brief Estimated grouphead temperature,
     /// derived from the boiler temperature.
     /// @return Temperature, in degC

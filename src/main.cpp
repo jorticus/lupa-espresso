@@ -110,12 +110,13 @@ void loop()
 
     Network::handle();
     OTA::handle();
-    IO::process();
 
     if (WiFi.status() == WL_CONNECTED) {
         HomeAssistant::process();
     }
 
+    IO::process();
+    SensorSampler::process();
     State::processState();
 
     if (State::uiState != State::MachineState::FirmwareUpdate && 

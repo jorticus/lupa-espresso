@@ -9,6 +9,10 @@
 #include "Adafruit_MAX31865.h"
 #include "PressureTransducer.h"
 #include "PulseCounter.h"
+#include "config.h"
+
+
+#define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
 
 extern Adafruit_MAX31865   rtd;
 extern PressureTransducer  pressure;
@@ -407,6 +411,10 @@ void process() {
 
 float getTemperature() {
     return value_temperature;
+}
+
+bool isTemperatureStabilized() {
+    return (value_temperature >= PREHEAT_TEMPERATURE_C);
 }
 
 float getEstimatedGroupheadTemperature() {

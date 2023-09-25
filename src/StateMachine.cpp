@@ -14,8 +14,6 @@ MachineState uiState    = MachineState::Init;
 FaultState uiFault      = FaultState::NoFault;
 BrewStats brewStats     = {0};
 
-#define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
-
 const unsigned long lever_debounce_interval_ms = 500;
 static unsigned long t_idle_start = 0;
 static unsigned long t_steam_start = 0;
@@ -287,7 +285,7 @@ void processState()
         case MachineState::Sleep:
             if (IO::isBrewing() || IO::isLeverPulled()) {
                 // When waking from sleep, go to preheat state if we're not yet up to temperature
-                if (SensorSampler::isTemperatureValid() && (SensorSampler::getTemperature() < PREHEAT_TEMPERATURE_C)) {
+                if (SensorSampler::isTemperatureValid() && (!SensorSampler::isTemperatureStabilized())) {
                     uiState = MachineState::Preheat;
                     resetIdleTimer();
                 }
@@ -312,10 +310,11 @@ void processState()
                     uiState = MachineState::Sleep;
                 }
                 // Close to boiler temperature, go to ready
-                else if (t >= PREHEAT_TEMPERATURE_C) {
+                else if (SensorSampler::isTemperatureStabilized()) {
                     uiState = MachineState::Ready;
                     resetIdleTimer();
                 }
+                // TODO: Timeout fault if temperature never stabilizes...
             }
 
             if (IO::isBoilerTankLow()) {
