@@ -139,6 +139,22 @@ void process() {
     else if (state != State::MachineState::FillTank) {
         IO::setPump(false);
     }
+
+#ifdef USE_WATERLEVEL
+    if (state == State::MachineState::FillTank ||
+        state == State::MachineState::Ready ||
+        state == State::MachineState::Brewing ||
+        state == State::MachineState::Preheat)
+    {
+        readWaterLevel();
+    }
+    else
+    {
+        // Disable water level sensor to prevent
+        // corrosion of metal probe
+        disableWaterLevel();
+    }
+#endif
 }
 
 bool isWaterTankLow() {
