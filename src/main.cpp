@@ -79,31 +79,23 @@ void setup() {
 
     HomeAssistant::init();
 
-
-    // Something about initializing the sensors is introducing instability...
-    SensorSampler::initialize();
-
-#if false
     bool isSensorsInitialized = SensorSampler::initialize();
 
-    SensorSampler::start();
-#endif
-
     HeatControl::initControlLoop();
+
+    SensorSampler::start();
     
     // Power-on state:
     //State::setState(State::MachineState::Preheat);
     State::setState(State::MachineState::Off);
     //State::setState(MachineState::SensorTest);
 
-#if false
     // If sensors could not be initialized, indicate fault
     if (State::uiState != State::MachineState::SensorTest && (!isSensorsInitialized))
     {
         State::setFault(State::FaultState::SensorFailure);
         return;
     }
-#endif
 
     // Enable watchdog timer
     esp_task_wdt_init(WDT_TIMEOUT, true);
@@ -123,7 +115,6 @@ void loop()
         HomeAssistant::process();
     }
 
-#if true
     IO::process();
     SensorSampler::process();
     State::processState();
@@ -131,17 +122,8 @@ void loop()
     if (State::uiState != State::MachineState::FirmwareUpdate && 
         State::uiState != State::MachineState::Off)
     {
-        // Keep this disabled until we have removed all crashing elsewhere...
         HeatControl::processControlLoop();
     }
 
     UI::render();
-#else
-    static unsigned long t_last = 0;
-    if ((millis() - t_last) > 1000) {
-        t_last = millis();
-
-        Serial.printf("%lu\n", millis());
-    }
-#endif
 }

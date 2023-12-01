@@ -140,7 +140,6 @@ void HomeAssistant::process() {
             reportState();
         }
 
-#if false // EXPERIMENT: Does reporting temperature state cause the instability??
         // Use fast report rate when on, slow report rate when off
         auto interval = (state != State::MachineState::Off) ?
             sensor_sample_interval_ms : 
@@ -159,7 +158,6 @@ void HomeAssistant::process() {
             float estimated_power = IO::getHeatPower() * CONFIG_BOILER_FULL_POWER_WATTS;
             sensor_power.update(estimated_power);
         }
-#endif
     }
 
     client.loop();
