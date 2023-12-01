@@ -9,6 +9,8 @@
 #include "UI.h"
 #include "SensorSampler.h"
 
+#define USE_WATERLEVEL
+
 // Reading is typically 0 when water is filled,
 // and ~500 when it needs filling
 const touch_value_t water_threshold_high = 20;
@@ -17,6 +19,10 @@ const touch_value_t water_threshold_low = 10;
 static bool s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 static bool s_waterLow = false;
+
+extern "C" {
+    uint8_t temprature_sens_read();
+}
 
 static Buttons<
     Btn<PIN_IN_POWER_BTN, HIGH>
@@ -63,25 +69,19 @@ void initGpio() {
 
     buttons.onButtonPress(onButtonPress);
 
+#ifdef USE_WATERLEVEL
     // Initialize touch sensor input, used to detect boiler water level
     // https://github.com/ESP32DE/esp-iot-solution-1/blob/master/documents/touch_pad_solution/touch_sensor_design_en.md
     touchSetCycles(0xF000, 0xF000);
     touchRead(T0);
     touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
-    
+#endif
+
     failsafe();
 }
 
-void process() {
-    buttons.process();
-
-    auto state = State::getState();
-
-    if (state == State::MachineState::Fault) {
-        s_waterLow = false;
-        return;
-    }
-
+#ifdef USE_WATERLEVEL
+void readWaterLevel() {
     // Detect the boiler water level using the touch peripheral
     static unsigned long t_last = 0;
     static unsigned long fill_counter = 0;
@@ -124,6 +124,30 @@ void process() {
                 cycle = 0;
                 break;
         }
+    }
+}
+
+void disableWaterLevel() {
+    touch_pad_filter_stop();
+}
+#endif
+
+void process() {
+    buttons.process();
+
+    auto state = State::getState();
+
+    if (state == State::MachineState::Fault) {
+        s_waterLow = false;
+        return;
+    }
+
+    static unsigned long t_last2 = 0;
+    if ((millis() - t_last2) > 10000) {
+        t_last2 = millis();
+
+        auto itemp = temprature_sens_read();
+        Serial.printf("iTemp: %d\n", itemp);
     }
 
 
@@ -173,7 +197,8 @@ bool isBrewing() {
     return (
         (State::uiState != State::MachineState::Preheat) && 
         (State::uiState != State::MachineState::FillTank) &&
-        SensorSampler::isFlowing()
+        //SensorSampler::isFlowing()
+        isLeverPulled()
     );
 }
 

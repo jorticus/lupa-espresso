@@ -4,6 +4,8 @@
 #include "Display.h"
 #include "hardware.h"
 
+#define ENABLE_DISPLAY
+
 namespace Display {
 
 TFT_eSPI    tft;
@@ -14,6 +16,9 @@ float display_brightness = 1.0;
 bool backlight_en = false;
 
 void initDisplay() {
+    digitalWrite(TFT_CS_LEFT, HIGH);
+    digitalWrite(TFT_CS_RIGHT, HIGH);
+
     Serial.println("Initialize LCD...");
 
     digitalWrite(TFT_CS_LEFT, LOW);
@@ -56,6 +61,7 @@ void tftClearCanvas() {
 void tftUpdateDisplay() {
     digitalWrite(MAX_CS, HIGH);
 
+#ifdef ENABLE_DISPLAY
     digitalWrite(TFT_CS_RIGHT, LOW);
     gfx_right.pushSprite(0,0);
     digitalWrite(TFT_CS_RIGHT, HIGH);
@@ -63,13 +69,13 @@ void tftUpdateDisplay() {
     digitalWrite(TFT_CS_LEFT, LOW);
     gfx_left.pushSprite(0,0);
     digitalWrite(TFT_CS_LEFT, HIGH);
+#endif
 
     // Enable backlight
     if (!backlight_en) {
         backlight_en = true;
         setBrightness(display_brightness);
     }
-    
 }
 
 // def cie1931(L):

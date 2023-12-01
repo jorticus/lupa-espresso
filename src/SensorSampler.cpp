@@ -11,6 +11,7 @@
 #include "PulseCounter.h"
 #include "config.h"
 
+//#define USE_TIMERS
 
 #define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
 
@@ -115,8 +116,10 @@ static const unsigned long sampleRateMs = 10;
 static const unsigned long temperatureSampleRateMs = 100;
 static const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
+#ifdef USE_TIMERS
 static TimerHandle_t timer;
 static TimerHandle_t timer2;
+#endif
 
 bool isMaxSampleReady() {
     return (digitalRead(MAX_RDY) == LOW);
@@ -199,7 +202,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
         }
     }
 
-    
+    #if true
     // The pulse counter should always have a valid sample, though it runs with its own timer
     // and may not be aligned to our sample rate.
     if (PulseCounter1.isSampleReady()) {
@@ -265,6 +268,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
         is_valid_flow_rate = false;
         s_isFlowing = false;
     }
+    #endif
 
     // 100ms per tick
     if (divider2++ == 2) {
@@ -308,12 +312,18 @@ bool initTemperature() {
 
     pinMode(MAX_RDY, INPUT);
 
+    // TODO: Initializing the temperature sensor seems to be introducing instability.
+    // Disabling the following code, the machine won't crash.
+    // Unsure if it is the RTD code itself, or if it's a side interaction of not having
+    // temperature being reported...
+#if true
     rtd.begin(MAX31865_3WIRE);
     rtd.enableBias(true);
     rtd.enable50Hz(true);
     
     //Serial.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
     //Serial.println("ERROR: No response from MAX");
+
 
     rtd.readRTD();
     auto fault = rtd.readFault();
@@ -355,7 +365,7 @@ bool initTemperature() {
 
         return true;
     }
-
+#endif
     return false;
 }
 
@@ -372,6 +382,7 @@ bool initFlow() {
 bool initialize() {
     Serial.println("Initialize Sensor Sampler");
 
+#ifdef USE_TIMERS
     timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdTRUE, nullptr, onTemperatureTimer);
     if (timer2 == nullptr) {
         Serial.println("ERROR: Could not allocate SensorSamplerT timer");
@@ -380,41 +391,71 @@ bool initialize() {
     if (timer == nullptr) {
         Serial.println("ERROR: Could not allocate SensorSampler timer");
     }
+#endif
 
+#if false
     bool isTemperatureAvailable = initTemperature();
-    bool isPressureAvailable = initPressure();
-    bool isFlowAvailable = initFlow();
+    bool isPressureAvailable    = initPressure();
+    bool isFlowAvailable        = initFlow();
 
     return (isTemperatureAvailable && isPressureAvailable && isFlowAvailable);
+#else
+    initTemperature();
+    return true;
+#endif
 }
 
 void start() {
+#ifdef USE_TIMERS
     xTimerStart(timer2, 0);
     xTimerStart(timer, 0);
+#endif
 
     rtd.autoConvert(true);
     pressure.startSample();
+
     PulseCounter1.begin(FLOW1_PULSE_PIN, sampleRateMs);
     PulseCounter2.begin(FLOW2_PULSE_PIN, sampleRateMs);
 }
 
 void stop() {
+#ifdef USE_TIMERS
     xTimerStop(timer, 0);
     xTimerStop(timer2, 0);
+#endif
 
     rtd.autoConvert(false);
 }
 
 void process() {
+#ifndef USE_TIMERS
+    static unsigned long t_last1 = 0;
+    static unsigned long t_last2 = 0;
 
+    // 100ms
+    if ((millis() - t_last1) > temperatureSampleRateMs) {
+        t_last1 = millis();
+
+        onTemperatureTimer(nullptr);
+    }
+
+    // 10ms
+    if ((millis() - t_last2) > sampleRateMs) {
+        t_last2 = millis();
+
+        onSensorTimer(nullptr);
+    }
+#endif
 }
 
 float getTemperature() {
     return value_temperature;
+    //return 100.0f;
 }
 
 bool isTemperatureStabilized() {
     return (value_temperature >= PREHEAT_TEMPERATURE_C);
+    //return true;
 }
 
 float getEstimatedGroupheadTemperature() {
