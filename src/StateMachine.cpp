@@ -239,7 +239,7 @@ void onStateChanged(MachineState lastState, MachineState newState) {
             HeatControl::setProfile(HeatControl::BoilerProfile::Tuning);
             // Fall through to default...
         default:
-            if (lastState == MachineState::Off) {
+            if (lastState == MachineState::Off || lastState == MachineState::Sleep) {
                 // When transitioning from Off->On, start the power-on animation.
                 // This will set the display brightness as needed.
                 UI::triggerAnimation(UI::Anim::PowerOn);

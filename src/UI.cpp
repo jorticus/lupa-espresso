@@ -483,11 +483,13 @@ void triggerAnimation(Anim anim) {
     switch (anim) {
         case Anim::PowerOff:
             Serial.println("Anim: Power Off");
+            startup_anim = 0;
             power_off_anim = anim_steps;
             break;
 
         case Anim::PowerOn:
             Serial.println("Anim: Power On");
+            power_off_anim = 0;
             startup_anim = anim_steps;
             break;
     }
