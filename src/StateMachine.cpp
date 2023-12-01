@@ -223,6 +223,10 @@ void onStateChanged(MachineState lastState, MachineState newState) {
             UI::triggerAnimation(UI::Anim::PowerOff);
             break;
 
+        case MachineState::Fault:
+            IO::failsafe();
+            break;
+
         case MachineState::Brewing:
             beginBrew();
             break;
