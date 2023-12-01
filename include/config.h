@@ -29,6 +29,10 @@
 // long the preheat UI is shown.
 #define CONFIG_BOILER_PREHEAT_TARGET_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
 
+// Minimum system pressure
+// Machine will attempt to keep pressure above this level when idle
+#define CONFIG_MIN_PRESSURE (0.5f)
+
 // Machine idle timeout
 //#define CONFIG_IDLE_TIMEOUT_MS (0) // Disabled
 //#define CONFIG_IDLE_TIMEOUT_MS (30*60*1000) // 30m

@@ -465,6 +465,12 @@ void renderRight() {
             uiRenderStatusRing(gfx, "FILLING", TFT_YELLOW, ring_w);
             break;
 
+        case MachineState::StabilizePressure:
+            uiRenderPressureGauge(gfx);
+            uiRenderFlowGauge(gfx);
+            uiRenderStatusRing(gfx, "STABILIZING", TFT_YELLOW, 10);
+            break;
+
         case MachineState::Sleep:
 
             // Pulse animation

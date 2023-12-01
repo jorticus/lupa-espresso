@@ -30,7 +30,8 @@ static const char* UiState_Str[] = {
     "Firmware Update",
     "Sleep",
     "Tuning",
-    "Fill Tank"
+    "Fill Tank",
+    "Stabilize"
 };
 
 void setState(MachineState state) {
@@ -324,6 +325,9 @@ void processState()
             if (IO::isBoilerTankLow()) {
                 uiState = MachineState::FillTank;
             }
+            if (!IO::isLeverPulled() && SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE)) {
+                uiState = MachineState::StabilizePressure;
+            }
             if (IO::isBrewing()) {
                 // (Won't result in a good brew, but allow this for testing / flushing the system)
                 uiState = MachineState::Brewing;
@@ -348,6 +352,9 @@ void processState()
             if (IO::isBoilerTankLow()) {
                 uiState = MachineState::FillTank;
             }
+            if (!IO::isLeverPulled() && SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE)) {
+                uiState = MachineState::StabilizePressure;
+            }
             if (IO::isBrewing()) {
                 uiState = MachineState::Brewing;
             }
@@ -368,6 +375,15 @@ void processState()
             }
             break;
 
+        case MachineState::StabilizePressure:
+            if (!(SensorSampler::isPressureValid() && (SensorSampler::getPressure() < (CONFIG_MIN_PRESSURE + 0.5f)))) {
+                IO::setPump(false);
+                uiState = MachineState::Preheat;
+            }
+            else {
+                IO::setPump(true);
+            }
+            break;
 
         case MachineState::Fault:
             // If fault was low tank, and tank is no longer low, clear the fault.

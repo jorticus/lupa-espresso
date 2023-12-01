@@ -23,7 +23,8 @@ namespace State {
         FirmwareUpdate,
         Sleep,
         Tuning,
-        FillTank
+        FillTank,
+        StabilizePressure
     };
 
     enum class FaultState {
