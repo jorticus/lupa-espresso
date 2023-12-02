@@ -22,7 +22,7 @@ WiFiClient net;
 PubSubClient client(net);
 ComponentContext context(client);
 
-const unsigned long sensor_sample_interval_ms = 1000;
+const unsigned long sensor_sample_interval_ms = 5000;
 const unsigned long slow_sensor_sample_interval = 60*1000; // 1 min
 const unsigned long power_sample_interval_ms = 10*1000;
 
@@ -43,6 +43,14 @@ HAComponent<Component::Sensor> sensor_temperature(context,
     sensor_sample_interval_ms, 
     0.0f, 
     SensorClass::Temperature
+);
+
+HAComponent<Component::Sensor> sensor_pressure(context, 
+    "pressure", 
+    "Grouphead Pressure", 
+    sensor_sample_interval_ms, 
+    0.0f, 
+    SensorClass::Pressure
 );
 
 HAComponent<Component::BinarySensor> sensor_isbrewing(context, 
@@ -152,6 +160,12 @@ void HomeAssistant::process() {
             if (SensorSampler::isTemperatureValid()) {
                 auto t = SensorSampler::getTemperature();
                 sensor_temperature.update(t);
+            }
+
+            // Report current grouphead pressure to HA
+            if (SensorSampler::isPressureValid()) {
+                auto p = SensorSampler::getPressure();
+                sensor_pressure.update(p);
             }
 
             // Estimate boiler power and report to HA
