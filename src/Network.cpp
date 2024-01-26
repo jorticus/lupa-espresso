@@ -71,6 +71,15 @@ static void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (w
     tftUpdateDisplay();
 }
 
+static void startWiFi()
+{
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(WIFI_PS_NONE);
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    WiFi.setHostname(secrets::device_name);
+    WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+}
+
 void initWiFi()
 {
     wl_status_t result;
@@ -82,11 +91,7 @@ void initWiFi()
         uiRenderWiFiConnect(WifiConnectionStatus::Connecting);
         Serial.println();
 
-        WiFi.mode(WIFI_STA);
-        WiFi.setSleep(WIFI_PS_NONE);
-        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
-        WiFi.setHostname(secrets::device_name);
-        WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+        startWiFi();
         Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
 
         result = (wl_status_t)WiFi.waitForConnectResult();
@@ -109,36 +114,50 @@ void initWiFi()
     delay(1500);
 #else
     Serial.println("Connecting WiFi...");
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleep(WIFI_PS_NONE);
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
-    WiFi.setHostname(secrets::device_name);
-    WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+    startWiFi();
     
     //Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
     //WiFi.waitForConnectResult();
 #endif
 }
 
+static const char* wifi_status_str[] = {
+    "Idle",
+    "No SSID",
+    "Scan Completed",
+    "Connected",
+    "Connect Failed",
+    "Connection Lost",
+    "Disconnected"
+};
+
 void handle() {
     static unsigned long t_last = 0;
-    const unsigned long reconnect_interval_ms = 5000;
+    static wl_status_t last_status = WL_DISCONNECTED;
+    const unsigned long reconnect_interval_ms = 10000;
 
     auto status = WiFi.status();
+    if (last_status != status) {
+        last_status = status; 
+        Serial.write("WiFi: ");
+        Serial.println(wifi_status_str[(int)status]);
+    }
+
     if (!(WiFi.getMode() & WIFI_MODE_STA) || 
         (status == WL_NO_SSID_AVAIL) || 
         (status == WL_CONNECT_FAILED) || 
-        (status == WL_CONNECTION_LOST))
+        (status == WL_CONNECTION_LOST) ||
+        (status == WL_DISCONNECTED))
     {
         // Throttle reconnection attempts
         if ((millis() - t_last) > reconnect_interval_ms) {
             t_last = millis();
-            Serial.println("WiFi connection lost, reconnecting...");
-            WiFi.mode(WIFI_STA);
-            WiFi.setSleep(WIFI_PS_NONE);
-            WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
-            WiFi.setHostname(secrets::device_name);
-            WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+            //WiFi.mode(WIFI_OFF);
+            WiFi.disconnect(true, false);
+            if (status != WL_DISCONNECTED) {
+                Serial.println("WiFi connection lost, reconnecting...");
+            }
+            startWiFi();
         }
     }
 }
