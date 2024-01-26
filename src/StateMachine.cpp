@@ -10,9 +10,10 @@
 
 namespace State {
 
-MachineState uiState    = MachineState::Init;
-FaultState uiFault      = FaultState::NoFault;
-BrewStats brewStats     = {0};
+MachineState uiState        = MachineState::Init;
+FaultState uiFault          = FaultState::NoFault;
+const char* uiFaultMessage  = nullptr;
+BrewStats brewStats         = {0};
 
 const unsigned long lever_debounce_interval_ms = 500;
 static unsigned long t_idle_start = 0;
@@ -42,8 +43,15 @@ MachineState getState() {
     return uiState;
 }
 
-void setFault(FaultState state) {
+void setFault(FaultState state, const char* msg) {
+    if (msg != nullptr) {
+        Serial.printf("FAULT: %d\n", state);
+    } else {
+        Serial.printf("FAULT: %d (%s)\n", state, msg);
+    }
+
     uiState = MachineState::Fault;
+    uiFaultMessage = msg;
     uiFault = state;
 }
 
@@ -395,6 +403,7 @@ void processState()
             // Transition Fault -> Preheat (-> Ready)
             if (uiFault == FaultState::LowWater && !IO::isWaterTankLow()) {
                 uiFault = FaultState::NoFault;
+                uiFaultMessage = nullptr;
                 uiState = MachineState::Preheat;
                 resetIdleTimer();
             }

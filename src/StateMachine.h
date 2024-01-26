@@ -43,6 +43,8 @@ namespace State {
     /// @brief If uiState is Fault, this is the specific fault that occurred.
     extern FaultState uiFault;
 
+    extern const char* uiFaultMessage;
+
     /// @brief Statistics of the current brew operation
     extern BrewStats brewStats;
 
@@ -53,7 +55,7 @@ namespace State {
     MachineState getState();
 
     /// @brief Set a fault state
-    void setFault(FaultState fault);
+    void setFault(FaultState fault, const char* msg = nullptr);
 
     /// @brief Set power control state
     /// @param pwr On/off

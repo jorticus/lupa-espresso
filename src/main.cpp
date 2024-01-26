@@ -37,6 +37,55 @@ PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
 using namespace Display;
 
+// int custom_vprintf(const char* str, va_list l) {
+//     static char buf[128];
+//     auto len = vsnprintf(buf, sizeof(buf), str, l);
+//     Debug.write("ESP:");
+//     return Debug.write(buf, len);
+// }
+
+extern "C" {
+    void clear_panic_buffer();
+    void print_panic_buffer();
+    const char* get_panic_buffer();
+}
+
+bool handle_reset() {
+    auto reason = esp_reset_reason();
+    Serial.printf("Reset Reason: %d\n", reason);
+    if (reason == ESP_RST_PANIC || 
+        reason == ESP_RST_INT_WDT ||
+        reason == ESP_RST_WDT ||
+        reason == ESP_RST_TASK_WDT)
+    {
+        Serial.print("Last reset was due to ");
+        switch (reason) {
+            case ESP_RST_PANIC: Serial.print("FW Panic"); break;
+            case ESP_RST_INT_WDT: Serial.print("INT WDT"); break;
+            case ESP_RST_WDT: Serial.print("WDT"); break;
+            case ESP_RST_TASK_WDT: Serial.print("Task WDT"); break;
+            default: Serial.print(reason);
+        }
+        Serial.println(", entering failsafe mode...");
+
+        if (reason == ESP_RST_PANIC) {
+            print_panic_buffer();
+            State::setFault(State::FaultState::SoftwarePanic, "PANIC");
+        }
+        else {
+            State::setFault(State::FaultState::SoftwarePanic, "WATCHDOG");
+        }
+
+        clear_panic_buffer();
+
+        return true;
+    }
+    else {
+        clear_panic_buffer();
+        return false;
+    }
+}
+
 void setup() {
     Serial.begin(9600);
 
@@ -64,16 +113,7 @@ void setup() {
 
     // Enter fail-safe mode if we've encountered a firmware bug,
     // before proceeding further. This allows us to recover via OTA.
-    auto reason = esp_reset_reason();
-    Serial.printf("Reset Reason: %d\n", reason);
-    if (reason == ESP_RST_PANIC || 
-        reason == ESP_RST_INT_WDT ||
-        reason == ESP_RST_WDT ||
-        reason == ESP_RST_TASK_WDT)
-    {
-        Serial.println("Last reset was due to FW panic, entering failsafe mode...");
-
-        State::setFault(State::FaultState::SoftwarePanic);
+    if (handle_reset()) {
         return;
     }
 
@@ -93,7 +133,7 @@ void setup() {
     // If sensors could not be initialized, indicate fault
     if (State::uiState != State::MachineState::SensorTest && (!isSensorsInitialized))
     {
-        State::setFault(State::FaultState::SensorFailure);
+        State::setFault(State::FaultState::SensorFailure, "FAIL_INIT");
         return;
     }
 

@@ -426,6 +426,9 @@ void renderRight() {
             uint16_t color = TFT_RGB656(c, 0, 0);
 
             uiRenderStatusRing(gfx, status_str, color, ring_w);
+            if (uiFaultMessage != nullptr) {
+                uiRenderLabelCentered(gfx, 24, TFT_WHITE, uiFaultMessage);
+            }
             break;
         }
 

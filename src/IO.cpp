@@ -137,11 +137,6 @@ void process() {
 
     auto state = State::getState();
 
-    if (state == State::MachineState::Fault) {
-        s_waterLow = false;
-        return;
-    }
-
     static unsigned long t_last2 = 0;
     if ((millis() - t_last2) > 10000) {
         t_last2 = millis();
@@ -150,6 +145,10 @@ void process() {
         Serial.printf("iTemp: %d\n", itemp);
     }
 
+    if (state == State::MachineState::Fault) {
+        s_waterLow = false;
+        return;
+    }
 
     // Activate pump when lever pulled.
     // This is separate from the Brewing state logic to keep things simple.
