@@ -142,10 +142,12 @@ static void onSensorTimer(TimerHandle_t timer) {
     pressure.startSample();
 
     auto t2 = millis();
+    auto td = (t2 - t1);
 
-    if ((t2 - t1) > sampleRateMs) {
+    if (td > sampleRateMs) {
         // Above code took longer than the timer interval to execute
-        Serial.printf("TIMER1 OVERFLOW %d\n", (t2 - t1));
+        Serial.printf("TIMER1 OVERFLOW %d\n", td);
+        td = sampleRateMs;
     }
 
     // Serial.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
@@ -154,6 +156,8 @@ static void onSensorTimer(TimerHandle_t timer) {
     //     value_flow_rate,
     //     (t2 - t1)
     // );
+
+    xTimerReset(timer, pdMS_TO_TICKS(sampleRateMs - td));
 }
 
 static float calculateRtdTemperature(float rtd_raw) {
@@ -282,12 +286,15 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     }
 
     auto t2 = millis();
+    auto td = (t2 - t1);
 
-    if ((t2 - t1) > temperatureSampleRateMs) {
+    if (td > temperatureSampleRateMs) {
         // Above code took longer than the timer interval to execute
         Serial.println("TIMER2 OVERFLOW");
+        td = temperatureSampleRateMs;
     }
 
+    xTimerReset(timer2, pdMS_TO_TICKS(temperatureSampleRateMs - td));
     //Serial.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
 }
 
@@ -372,11 +379,15 @@ bool initFlow() {
 bool initialize() {
     Serial.println("Initialize Sensor Sampler");
 
-    timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdTRUE, nullptr, onTemperatureTimer);
+    // NOTE: Do not use auto-reset for the timer,
+    // as this may lead to an assert within the stack when it tries to reset the timer.
+    // Manually resetting the timer is more reliable.
+
+    timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdFALSE, nullptr, onTemperatureTimer);
     if (timer2 == nullptr) {
         Serial.println("ERROR: Could not allocate SensorSamplerT timer");
     }
-    timer = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdTRUE, nullptr, onSensorTimer);
+    timer = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdFALSE, nullptr, onSensorTimer);
     if (timer == nullptr) {
         Serial.println("ERROR: Could not allocate SensorSampler timer");
     }
