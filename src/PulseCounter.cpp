@@ -38,7 +38,7 @@ extern "C"
 void IRAM_ATTR PulseCounter::timerIsr() {
     portENTER_CRITICAL_ISR(&timerIsrMux);
     PulseCounter1.onTimer();
-    // PulseCounter2.onTimer();
+    PulseCounter2.onTimer();
     portEXIT_CRITICAL_ISR(&timerIsrMux);
 }
 
