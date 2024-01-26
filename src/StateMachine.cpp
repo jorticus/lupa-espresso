@@ -221,7 +221,9 @@ void onStateChanged(MachineState lastState, MachineState newState) {
 
             // When transitioning to the off state, start the power-off animation.
             // Display will be turned off when the animation completes.
-            UI::triggerAnimation(UI::Anim::PowerOff);
+            if (lastState != MachineState::Init) {
+                UI::triggerAnimation(UI::Anim::PowerOff);
+            }
             break;
 
         case MachineState::Fault:
@@ -244,6 +246,7 @@ void onStateChanged(MachineState lastState, MachineState newState) {
                 // When transitioning from Off->On, start the power-on animation.
                 // This will set the display brightness as needed.
                 UI::triggerAnimation(UI::Anim::PowerOn);
+                Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
             }
             // else {
             //     Display::setBrightness(CONFIG_FULL_BRIGHTNESS);

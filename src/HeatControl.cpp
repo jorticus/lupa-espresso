@@ -250,6 +250,7 @@ void setProfile(BoilerProfile mode) {
         case BoilerProfile::Off:
             //pid_setpoint = 0.0f;
             // TODO: Reset/Disable PID controller
+            Serial.println("Off");
             break;
         case BoilerProfile::Brew:
             Serial.println("Brew");
