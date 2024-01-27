@@ -128,7 +128,8 @@ void readWaterLevel() {
 }
 
 void disableWaterLevel() {
-    touch_pad_filter_stop();
+    //Serial.println("Disable touch sampling");
+    //touch_pad_filter_stop();
 }
 #endif
 

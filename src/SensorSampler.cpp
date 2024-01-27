@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <freertos/semphr.h>
 #include "SensorSampler.h"
+#include "StateMachine.h"
 
 #include "value_array.h"
 #include "fir.h"
@@ -115,7 +116,7 @@ static const unsigned long sampleRateMs = 10;
 static const unsigned long temperatureSampleRateMs = 100;
 static const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
-static TimerHandle_t timer;
+static TimerHandle_t timer1;
 static TimerHandle_t timer2;
 
 bool isMaxSampleReady() {
@@ -157,7 +158,11 @@ static void onSensorTimer(TimerHandle_t timer) {
     //     (t2 - t1)
     // );
 
-    xTimerReset(timer, pdMS_TO_TICKS(sampleRateMs - td));
+    auto interval = sampleRateMs - td;
+    if (xTimerStart(timer1, pdMS_TO_TICKS(sampleRateMs)) != pdPASS) {
+        Serial.println("ERROR: Could not rearm timer1");
+        State::setFault(State::FaultState::SensorFailure, "TIMER1");
+    }
 }
 
 static float calculateRtdTemperature(float rtd_raw) {
@@ -294,7 +299,12 @@ static void onTemperatureTimer(TimerHandle_t timer) {
         td = temperatureSampleRateMs;
     }
 
-    xTimerReset(timer2, pdMS_TO_TICKS(temperatureSampleRateMs - td));
+    auto interval = temperatureSampleRateMs - td;
+    if (xTimerStart(timer, pdMS_TO_TICKS(interval)) != pdPASS) {
+        Serial.println("ERROR: Could not rearm timer2");
+        State::setFault(State::FaultState::SensorFailure, "TIMER2");
+    }
+
     //Serial.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
 }
 
@@ -387,8 +397,8 @@ bool initialize() {
     if (timer2 == nullptr) {
         Serial.println("ERROR: Could not allocate SensorSamplerT timer");
     }
-    timer = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdFALSE, nullptr, onSensorTimer);
-    if (timer == nullptr) {
+    timer1 = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdFALSE, nullptr, onSensorTimer);
+    if (timer1 == nullptr) {
         Serial.println("ERROR: Could not allocate SensorSampler timer");
     }
 
@@ -400,8 +410,9 @@ bool initialize() {
 }
 
 void start() {
+    Serial.println("Start sensor sampler");
     xTimerStart(timer2, 0);
-    xTimerStart(timer, 0);
+    xTimerStart(timer1, 0);
 
     rtd.autoConvert(true);
     pressure.startSample();
@@ -410,7 +421,8 @@ void start() {
 }
 
 void stop() {
-    xTimerStop(timer, 0);
+    Serial.printf("Stop sensor sampler");
+    xTimerStop(timer1, 0);
     xTimerStop(timer2, 0);
 
     rtd.autoConvert(false);
