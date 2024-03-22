@@ -62,7 +62,7 @@ void initGpio() {
 
     pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
-    pinMode(PIN_IN_WATER_LOW, INPUT_PULLDOWN);
+    pinMode(PIN_IN_WATER_LOW, INPUT);
     pinMode(PIN_OUT_HEAT, OUTPUT);
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
@@ -182,7 +182,18 @@ void process() {
 }
 
 bool isWaterTankLow() {
-    return (digitalRead(PIN_IN_WATER_LOW) == LOW);
+    static bool last_reading = false;
+
+    // For reasons I don't understand, this signal being high
+    // causes spurious readings of the water low GPIO.
+    // As a workaround, only sample when it is low (sensor ready).
+    // This is not ideal since if this remains high for some reason,
+    // we will never know if the tank is empty or not.
+    if (digitalRead(MAX_RDY) == LOW) {
+        last_reading = (digitalRead(PIN_IN_WATER_LOW) == LOW);
+    }
+    
+    return last_reading;
 }
 
 bool isBoilerTankLow() {
@@ -228,6 +239,12 @@ void setHeat(bool en) {
 }
 
 void setPump(bool en) {
+    static bool prev_value = LOW;
+    if (en != prev_value) {
+        Serial.printf("PUMP: %s\n", en ? "ON" : "OFF");
+        prev_value = en;
+    }
+
     digitalWrite(PIN_OUT_PUMP, en);
     // TODO: Set a watchdog timer that turns this off after X seconds
 }

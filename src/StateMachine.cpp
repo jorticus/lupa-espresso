@@ -93,13 +93,14 @@ void setPowerControl(bool pwr)
 }
 
 /// @brief Detect faults and enter a faulted state if needed
-void detectFaults()
+bool detectFaults()
 {
     if (IO::isWaterTankLow()) {
         uiFault = FaultState::LowWater;
         uiState = MachineState::Fault;
-        return;
+        return true;
     }
+    return false;
 }
 
 /// @brief Determine if temperature is within the allowable PID tuning range
@@ -313,41 +314,48 @@ void processState()
 
 
         case MachineState::Preheat:
-            detectFaults();
+            if (detectFaults()) break;
 
             if (SensorSampler::isTemperatureValid()) {
                 auto t = SensorSampler::getTemperature();
                 if (CONFIG_DO_PID_TUNE && isTemperatureInTuningRange(t)) {
                     Serial.println("Begin PID tuning...");
                     uiState = MachineState::Tuning;
+                    break;
                 }
                 // Up to sleeping temperature, go to sleep
                 else if (CONFIG_IDLE_AFTER_PREHEAT && (t > CONFIG_BOILER_IDLE_TEMPERATURE_C)) {
                     uiState = MachineState::Sleep;
+                    break;
                 }
                 // Close to boiler temperature, go to ready
                 else if (SensorSampler::isTemperatureStabilized()) {
+                    Serial.println("Temperature stabilized");
                     uiState = MachineState::Ready;
                     resetIdleTimer();
+                    break;
                 }
                 // TODO: Timeout fault if temperature never stabilizes...
             }
 
             if (IO::isBoilerTankLow()) {
                 uiState = MachineState::FillTank;
+                break;
             }
             if (!IO::isLeverPulled() && SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE)) {
                 uiState = MachineState::StabilizePressure;
+                break;
             }
             if (IO::isBrewing()) {
                 // (Won't result in a good brew, but allow this for testing / flushing the system)
                 uiState = MachineState::Brewing;
+                break;
             }
             break;
 
 
         case MachineState::Ready:
-            detectFaults();
+            if (detectFaults()) break;
 
             if (isIdleTimeoutElapsed()) {
                 Serial.println("Idle timeout - going to sleep");
@@ -376,7 +384,7 @@ void processState()
             // NOTE: Deliberately not checking boiler tank or faults
             // so we can finish the shot.
             // TODO: But we may still want to detect any absolutely critical faults...
-            //detectFaults();
+            //if (detectFaults()) break;
             stateBrew();
 
             // If lever is released, stop brewing
@@ -411,14 +419,14 @@ void processState()
 
 
         case MachineState::SensorTest:
-            detectFaults();
+            if (detectFaults()) break;
             break;
 
 
         case MachineState::FillTank:
             // This state is entered when we need to fill the boiler tank.
             // Brewing is not allowed during this time.
-            detectFaults();
+            if (detectFaults()) break;
 
             if (!IO::isBoilerTankLow()) {
                 // Boiler tank is now full.
