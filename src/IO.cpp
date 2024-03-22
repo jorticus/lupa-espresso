@@ -138,15 +138,15 @@ void disableWaterLevel() {
 void process() {
     buttons.process();
 
+//     static unsigned long t_last2 = 0;
+//     if ((millis() - t_last2) > 10000) {
+//         t_last2 = millis();
+
+//         auto itemp = temprature_sens_read();
+//         Serial.printf("iTemp: %d\n", itemp);
+//     }
+
     auto state = State::getState();
-
-    static unsigned long t_last2 = 0;
-    if ((millis() - t_last2) > 10000) {
-        t_last2 = millis();
-
-        auto itemp = temprature_sens_read();
-        Serial.printf("iTemp: %d\n", itemp);
-    }
 
     if (state == State::MachineState::Fault) {
         s_waterLow = false;
