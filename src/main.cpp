@@ -18,6 +18,7 @@
 #include "IO.h"
 #include "StateMachine.h"
 #include "HeatControl.h"
+#include "PressureControl.h"
 #include "Display.h"
 #include "UI.h"
 #include "Network.h"
@@ -124,6 +125,7 @@ void setup() {
     bool isSensorsInitialized = SensorSampler::initialize();
 
     HeatControl::initControlLoop();
+    PressureControl::initControlLoop();
 
     SensorSampler::start();
     
@@ -165,6 +167,7 @@ void loop()
         State::uiState != State::MachineState::Off)
     {
         HeatControl::processControlLoop();
+        //PressureControl::processControlLoop();
     }
 
     UI::render();

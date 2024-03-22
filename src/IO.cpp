@@ -4,6 +4,7 @@
 #include "hardware.h"
 #include "button.h"
 #include "driver/touch_sensor.h"
+#include "config.h"
 
 // Temporary: For lever pull detection
 #include "UI.h"
@@ -153,6 +154,7 @@ void process() {
         return;
     }
 
+#if !CONFIG_PRESSURE_PROFILING
     // Activate pump when lever pulled.
     // This is separate from the Brewing state logic to keep things simple.
     // In the future we could modulate the pump to give flow or pressure control.
@@ -165,6 +167,7 @@ void process() {
     else if (state != State::MachineState::FillTank) {
         IO::setPump(false);
     }
+#endif
 
 #ifdef USE_WATERLEVEL
     if (state == State::MachineState::FillTank ||
@@ -210,8 +213,8 @@ bool isBrewing() {
     return (
         (State::uiState != State::MachineState::Preheat) && 
         (State::uiState != State::MachineState::FillTank) &&
-        //SensorSampler::isFlowing()
-        isLeverPulled()
+        SensorSampler::isFlowing() // Water is flowing to grouphead (and not filling boiler)
+       // isLeverPulled()
     );
 }
 
@@ -253,7 +256,6 @@ void setPump(bool en) {
 
 void setWaterFillSolenoid(bool en) {
     digitalWrite(PIN_OUT_FILL_SOLENOID, en);
-    // TODO: Set a watchdog timer that turns this off after X seconds
 }
 
 float getHeatPower() {

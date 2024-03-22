@@ -6,6 +6,7 @@
 #include "SensorSampler.h"
 #include "config.h"
 #include "HeatControl.h"
+#include "PressureControl.h"
 #include "HomeAssistant.h"
 
 namespace State {
@@ -133,11 +134,16 @@ void beginBrew()
 
     // Reset flow accumulation
     SensorSampler::resetFlowCounter();
+
+    PressureControl::setProfile(PressureControl::PressureProfile::Manual);
+    PressureControl::start();
 }
 
 /// @brief End a brew
 void endBrew()
 {
+    PressureControl::stop();
+
     resetIdleTimer();
 
     UI::uiFreezeGraphs();
@@ -314,6 +320,7 @@ void processState()
 
 
         case MachineState::Preheat:
+        {
             if (detectFaults()) break;
 
             if (SensorSampler::isTemperatureValid()) {
@@ -342,24 +349,28 @@ void processState()
                 uiState = MachineState::FillTank;
                 break;
             }
-            if (!IO::isLeverPulled() && SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE)) {
-                uiState = MachineState::StabilizePressure;
-                break;
-            }
-            if (IO::isBrewing()) {
+            if (IO::isLeverPulled()) {
                 // (Won't result in a good brew, but allow this for testing / flushing the system)
                 uiState = MachineState::Brewing;
                 break;
             }
-            break;
 
+            bool pressureLow = SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE);
+            if (pressureLow) {
+                uiState = MachineState::StabilizePressure;
+                break;
+            }
+            break;
+        }
 
         case MachineState::Ready:
+        {
             if (detectFaults()) break;
 
             if (isIdleTimeoutElapsed()) {
                 Serial.println("Idle timeout - going to sleep");
                 uiState = MachineState::Sleep;
+                break;
             }
 
             // After post-brew timeout, return from steam to regular brew profile
@@ -370,32 +381,43 @@ void processState()
 
             if (IO::isBoilerTankLow()) {
                 uiState = MachineState::FillTank;
+                break;
             }
-            if (!IO::isLeverPulled() && SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE)) {
-                uiState = MachineState::StabilizePressure;
-            }
-            if (IO::isBrewing()) {
+            if (IO::isLeverPulled()) {
                 uiState = MachineState::Brewing;
+                break;
+            }
+
+            bool pressureLow = SensorSampler::isPressureValid() && (SensorSampler::getPressure() < CONFIG_MIN_PRESSURE);
+            if (pressureLow) {
+                uiState = MachineState::StabilizePressure;
+                break;
             }
             break;
+        }
 
 
         case MachineState::Brewing:
+        {
             // NOTE: Deliberately not checking boiler tank or faults
-            // so we can finish the shot.
-            // TODO: But we may still want to detect any absolutely critical faults...
-            //if (detectFaults()) break;
+            // so we can finish the shot even if the water tank runs low.
+
             stateBrew();
 
-            // If lever is released, stop brewing
-            if (!IO::isBrewing()) {
+            // If lever is released, stop brewing even if profile not finished.
+            // Also stop brewing if the profile completes.
+            // TODO: But how do we stop cycling back when lever is still pulled?
+            if (!IO::isLeverPulled() || PressureControl::isProfileComplete()) {
                 endBrew();
                 uiState = MachineState::Ready;
             }
             break;
+        }
 
         case MachineState::StabilizePressure:
-            if (!(SensorSampler::isPressureValid() && (SensorSampler::getPressure() < (CONFIG_MIN_PRESSURE + 0.5f)))) {
+        {
+            bool pressureLow = SensorSampler::isPressureValid() && (SensorSampler::getPressure() < (CONFIG_MIN_PRESSURE + 0.5f));
+            if (!pressureLow) {
                 IO::setPump(false);
                 uiState = MachineState::Preheat;
             }
@@ -403,6 +425,7 @@ void processState()
                 IO::setPump(true);
             }
             break;
+        }
 
         case MachineState::Fault:
             // If fault was low tank, and tank is no longer low, clear the fault.

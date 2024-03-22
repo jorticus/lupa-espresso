@@ -31,7 +31,6 @@ static unsigned long t_width = 0;
 const float PID_OUTPUT_MAX = 100.0f;
 const float PID_OUTPUT_MIN = 0.0f;
 const unsigned long HEATER_MIN_PERIOD = 100;
-const unsigned long HEATER_MAX_PERIOD = 5000;
 const unsigned long HEATER_PERIOD = 5000;
 const unsigned long PID_PERIOD = 1000;
 
@@ -48,7 +47,7 @@ void initControlLoop()
     pid.setSetpoint(pid_setpoint);
     pid.reset();
 
-    Serial.printf("PID Parameters:\n\tKp: %.2f\n\tKi: %.2f\n\tKd: %.2f\n", 
+    Serial.printf("Heater PID Parameters:\n\tKp: %.2f\n\tKi: %.2f\n\tKd: %.2f\n", 
         pid.getKp(),
         pid.getKi(),
         pid.getKd()
@@ -228,7 +227,7 @@ void processControlLoop()
 
             // Turn off heater after defined period
             if ((t_start > 0) && ((t_now - t_start) > t_width)) {
-                // Keep heater on if at 100% duty
+                // Keep heater on if at 100% duty (only turn off if width is less than max period)
                 if (t_width < (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
                     IO::setHeat(false);
                 }

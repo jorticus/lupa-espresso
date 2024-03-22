@@ -32,6 +32,10 @@
 // Minimum system pressure
 // Machine will attempt to keep pressure above this level when idle
 #define CONFIG_MIN_PRESSURE (0.5f)
+#define CONFIG_MAX_PRESSURE (12.0f)
+
+// Target brew pressure
+#define CONFIG_TARGET_BREW_PRESSURE (9.0f)
 
 // Machine idle timeout
 //#define CONFIG_IDLE_TIMEOUT_MS (0) // Disabled
@@ -58,3 +62,6 @@
 // Measured power of boiler in watts,
 // used for estimating energy consumption
 #define CONFIG_BOILER_FULL_POWER_WATTS (1333.0f)
+
+// Whether to enable pressure profiling (PID control of pressure during brew)
+#define CONFIG_PRESSURE_PROFILING (true)
