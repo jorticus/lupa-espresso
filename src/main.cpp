@@ -89,6 +89,8 @@ bool handle_reset() {
 void setup() {
     Serial.begin(9600);
 
+    esp_task_wdt_init(10, false);
+
     pinMode(I2C_SDA, INPUT_PULLUP);
     pinMode(I2C_SCL, INPUT_PULLUP);
     Wire.setPins(I2C_SDA, I2C_SCL);
