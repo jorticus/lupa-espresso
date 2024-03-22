@@ -114,6 +114,7 @@ void readWaterLevel() {
                     s_waterLow = false;
                 }
 
+                Serial.println("Stop touch sample");
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
                 touch_pad_filter_stop();
                 cycle = 0;
@@ -130,6 +131,7 @@ void readWaterLevel() {
 void disableWaterLevel() {
     //Serial.println("Disable touch sampling");
     //touch_pad_filter_stop();
+    s_waterLow = false;
 }
 #endif
 
