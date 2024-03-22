@@ -255,7 +255,7 @@ void onStateChanged(MachineState lastState, MachineState newState) {
                 // When transitioning from Off->On, start the power-on animation.
                 // This will set the display brightness as needed.
                 UI::triggerAnimation(UI::Anim::PowerOn);
-                Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
+                //Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
             }
             // else {
             //     Display::setBrightness(CONFIG_FULL_BRIGHTNESS);

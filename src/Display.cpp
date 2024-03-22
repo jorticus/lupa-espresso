@@ -12,7 +12,7 @@ TFT_eSPI    tft;
 TFT_eSprite gfx_left  { &tft };
 TFT_eSprite gfx_right { &tft };
 
-float display_brightness = 1.0;
+float display_brightness = 0.0f;
 bool backlight_en = false;
 
 void initDisplay() {
@@ -49,8 +49,11 @@ void initDisplay() {
     backlight_en = false;
 
     digitalWrite(TFT_BL, LOW);
-    ledcAttachPin(TFT_BL, 0);
     ledcSetup(0, 4000, 8); // 12Khz 8bit resolution
+    ledcAttachPin(TFT_BL, 0);
+    ledcWrite(0, 0);
+
+    turnOff();
 }
 
 void tftClearCanvas() {

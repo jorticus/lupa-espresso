@@ -510,12 +510,13 @@ void uiRenderGlobalAnimations() {
         startup_anim--;
 
         if (startup_anim == 0) {
-            Display::setBrightness(1.0f);
+            Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
             return;
         }
 
         float b = 1.0f - ((float)(startup_anim) / (float)anim_steps);
-        Display::setBrightness(b * 0.5f);
+        Serial.printf("%.1f (%d)\n", b, startup_anim);
+        Display::setBrightness(b * CONFIG_FULL_BRIGHTNESS);
 
 //Experimental growing ring animation
 #if false
@@ -576,7 +577,7 @@ void uiRenderGlobalAnimations() {
         }
 
         float b = ((float)(power_off_anim) / (float)anim_steps);
-        Display::setBrightness(b * 0.5f);
+        Display::setBrightness(b * CONFIG_FULL_BRIGHTNESS);
 
 #if false
         const uint32_t w = (TFT_WIDTH/2);
