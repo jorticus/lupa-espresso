@@ -21,6 +21,11 @@ static bool s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 static bool s_waterLow = false;
 
+static TimerHandle_t pwm_timer;
+static TimerHandle_t pwm_timer_low;
+static const unsigned long pwm_interval = 100;
+static volatile unsigned long pwm_duty = 0;
+
 extern "C" {
     uint8_t temprature_sens_read();
 }
@@ -57,6 +62,33 @@ void failsafe() {
     s_heaterPower = 0.0f;
 }
 
+static void onTimerTick(TimerHandle_t timer) {
+    // atomic load from volatile
+    auto duty = pwm_duty;
+    auto interval = pwm_interval;
+
+    if (duty < 5) {
+        // Remain off (0%)
+    }
+    else {
+
+        //Serial.printf("PWM ON: %d/%d\n", duty, interval);
+        digitalWrite(PIN_OUT_PUMP, HIGH);
+
+        //if (duty < interval) {
+            if (xTimerStart(pwm_timer_low, pdMS_TO_TICKS(duty)) != pdPASS) {
+                State::setFault(State::FaultState::SensorFailure, "PWM");
+            }
+        //}
+        // else, remain on (100%)
+    }
+}
+
+static void onTimerLowTick(TimerHandle_t timer) {
+    //Serial.printf("PWM: OFF1\n");
+    digitalWrite(PIN_OUT_PUMP, LOW);
+}
+
 void initGpio() {
     // BOOT button used for debugging
     pinMode(0, INPUT);
@@ -81,6 +113,22 @@ void initGpio() {
     failsafe();
 }
 
+void initPwm() {
+    Serial.println("Initializing soft PWM");
+    // Soft PWM
+    // pwm_timer = xTimerCreate("PWM1H", pdMS_TO_TICKS(pwm_interval), pdTRUE, nullptr, onTimerTick);
+    // pwm_timer_low = xTimerCreate("PWM1L", pdMS_TO_TICKS(0), pdFALSE, nullptr, onTimerLowTick);
+
+    //xTimerStart(pwm_timer, 0);
+
+    // uint8_t group=(chan/8), timer=((chan/2)%4);
+    //ledcSetup(LEDC_CH_PUMP, 5, 8); // CH1 5Hz Min 0.78ms (Min duty for 20ms pulse = 25)
+    //ledcSetup(LEDC_CH_PUMP, 10, 8); // CH1 10Hz
+    ledcSetup(LEDC_CH_PUMP, 15, 8); // CH1 15Hz
+    ledcAttachPin(PIN_OUT_PUMP, LEDC_CH_PUMP);
+    ledcWrite(LEDC_CH_PUMP, 0);
+}
+
 #ifdef USE_WATERLEVEL
 void readWaterLevel() {
     // Detect the boiler water level using the touch peripheral
@@ -100,7 +148,7 @@ void readWaterLevel() {
             case 1: // Read touch channel and turn off sampling
             {
                 auto water_level_raw = touchRead(T0);
-                Serial.printf("WaterLevel: %d\n", water_level_raw);
+                //Serial.printf("WaterLevel: %d\n", water_level_raw);
 
                 if (water_level_raw > water_threshold_high) {
                     if (fill_counter >= 5) {
@@ -115,7 +163,7 @@ void readWaterLevel() {
                     s_waterLow = false;
                 }
 
-                Serial.println("Stop touch sample");
+                //Serial.println("Stop touch sample");
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
                 touch_pad_filter_stop();
                 cycle = 0;
@@ -250,8 +298,27 @@ void setPump(bool en) {
         prev_value = en;
     }
 
-    digitalWrite(PIN_OUT_PUMP, en);
+    pwm_duty = 0; // Disable PWM output, manual override
+    //ledcWrite(LEDC_CH_PUMP, en ? 0xFF : 0);
+    setPumpDuty(en ? 0xFF : 0);
+    //digitalWrite(PIN_OUT_PUMP, en);
+
     // TODO: Set a watchdog timer that turns this off after X seconds
+}
+
+void setPumpDuty(float duty) {
+    auto iduty = (uint8_t)(256.0 * duty);
+    Serial.printf("Set pump duty = %d\n", iduty);
+
+    if (duty <= 0.0f) {
+        ledcWrite(LEDC_CH_PUMP, 0);
+    }
+    else if (duty >= 1.0f) {
+        ledcWrite(LEDC_CH_PUMP, 0xFF);
+    }
+    else {
+        ledcWrite(LEDC_CH_PUMP, iduty);
+    }
 }
 
 void setWaterFillSolenoid(bool en) {

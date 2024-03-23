@@ -49,9 +49,9 @@ void initDisplay() {
     backlight_en = false;
 
     digitalWrite(TFT_BL, LOW);
-    ledcSetup(0, 4000, 8); // 12Khz 8bit resolution
-    ledcAttachPin(TFT_BL, 0);
-    ledcWrite(0, 0);
+    ledcSetup(LEDC_CH_DISPLAY, 4000, 8); // CH0 4kHz 8bit resolution
+    ledcAttachPin(TFT_BL, LEDC_CH_DISPLAY);
+    ledcWrite(LEDC_CH_DISPLAY, 0);
 
     turnOff();
 }
@@ -97,10 +97,10 @@ void setBrightness(float brightness) {
     
     if (b > 0) {
         // Max duty is 8 bits (0xFF)
-        ledcWrite(0, cie1931_table[b]);
+        ledcWrite(LEDC_CH_DISPLAY, cie1931_table[b]);
     }
     else {
-        ledcWrite(0, 0);
+        ledcWrite(LEDC_CH_DISPLAY, 0);
         digitalWrite(TFT_BL, LOW);
     }
 
@@ -111,7 +111,7 @@ void turnOff() {
     tftClearCanvas();
     tftUpdateDisplay();
 
-    ledcWrite(0, 0);
+    ledcWrite(LEDC_CH_DISPLAY, 0);
     digitalWrite(TFT_BL, LOW);
 }
 

@@ -88,3 +88,7 @@
 #define RTD_REFERENCE_RESISTANCE (430)
 #define RTD_MIN_TEMP (-200)
 #define RTD_MAX_TEMP (400)
+
+
+#define LEDC_CH_DISPLAY (0)
+#define LEDC_CH_PUMP    (2)

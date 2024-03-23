@@ -35,7 +35,7 @@
 #define CONFIG_MAX_PRESSURE (12.0f)
 
 // Target brew pressure
-#define CONFIG_TARGET_BREW_PRESSURE (9.0f)
+#define CONFIG_TARGET_BREW_PRESSURE (8.0f)
 
 // Machine idle timeout
 //#define CONFIG_IDLE_TIMEOUT_MS (0) // Disabled

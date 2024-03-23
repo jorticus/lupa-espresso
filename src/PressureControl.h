@@ -14,6 +14,12 @@ namespace PressureControl {
         AutoConstant
     };
 
+    void setPressure(float sp);
+
+    void updateParameters(float p, float i, float d);
+
+    void getParameters(float* p, float* i, float* d);
+
     /// @brief Initialize control loop parameters
     void initControlLoop();
 

@@ -6,6 +6,8 @@ namespace IO {
     /// @brief Initialize GPIO
     void initGpio();
 
+    void initPwm();
+
     /// @brief Handle inputs
     void process();
 
@@ -47,6 +49,8 @@ namespace IO {
     /// @brief Set water fill solenoid state immediately
     /// @param en Solenoid on/off
     void setWaterFillSolenoid(bool en);
+
+    void setPumpDuty(float duty);
 
 // Output State
 

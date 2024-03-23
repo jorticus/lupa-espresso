@@ -9,6 +9,8 @@
 #include "StateMachine.h"
 #include "IO.h"
 #include "config.h"
+#include "PressureControl.h"
+#include "MqttParamManager.h"
 //#include "version.h"
 
 // version.py
@@ -21,6 +23,7 @@ WiFiClient net;
 
 PubSubClient client(net);
 ComponentContext context(client);
+MqttParamManager mqttman(client, "lupa/param/");
 
 const unsigned long sensor_sample_interval_ms = 5000;
 const unsigned long slow_sensor_sample_interval = 60*1000; // 1 min
@@ -68,6 +71,87 @@ HAComponent<Component::Sensor> sensor_power(context,
     SensorClass::Power
 );
 
+void updatePidParameters();
+
+MqttParam<float> pid_sp(mqttman, "pid/bar/sp", [] (float val) { PressureControl::setPressure(val); });
+MqttParam<float> pid_kp(mqttman, "pid/bar/kp", [] (float val) { updatePidParameters(); });
+MqttParam<float> pid_ki(mqttman, "pid/bar/ki", [] (float val) { updatePidParameters(); });
+MqttParam<float> pid_kd(mqttman, "pid/bar/kd", [] (float val) { updatePidParameters(); });
+
+MqttParam<float> pump_duty(mqttman, "pump", [] (float val) { IO::setPumpDuty(val); });
+
+void updatePidParameters() {
+    PressureControl::updateParameters(pid_kp.value(), pid_ki.value(), pid_kd.value());
+}
+
+// void reportTuningParameters() {
+//     Serial.println("Publish PID parameters");
+//     float sp = CONFIG_TARGET_BREW_PRESSURE;
+//     float kp = 0.0f;
+//     float ki = 0.0f;
+//     float kd = 0.0f;
+//     PressureControl::getParameters(&kp, &ki, &kd);
+    
+//     String sp_s(sp);
+//     String kp_s(kp);
+//     String ki_s(ki);
+//     String kd_s(kd);
+//     client.publish("lupa/tuning/pressure/sp", sp_s.c_str());
+//     client.publish("lupa/tuning/pressure/kp", kp_s.c_str());
+//     client.publish("lupa/tuning/pressure/ki", ki_s.c_str());
+//     client.publish("lupa/tuning/pressure/kd", kd_s.c_str());
+// }
+
+// void tuningParameterChanged(String topic, String payload) {
+//     auto i1 = topic.lastIndexOf("/");
+//     auto param = topic.substring(i1+1);
+//     auto value = payload.toFloat();
+//     Debug.print("Parameter: "); Debug.print(param);
+//     Debug.print(" = ");
+//     Debug.print(value);
+//     Debug.printf(" '%s'", payload.c_str());
+//     Debug.println();
+
+//     if (param == "sp") {
+//         PressureControl::setPressure(value);
+//         return;
+//     }
+
+//     float kp = 0.0f;
+//     float ki = 0.0f;
+//     float kd = 0.0f;
+//     PressureControl::getParameters(&kp, &ki, &kd);
+//     if (param == "kp") {
+//         kp = value;
+//     }
+//     else if (param = "ki") {
+//         ki = value;
+//     }
+//     else if (param = "kd") {
+//         kd = value;
+//     }
+//     PressureControl::updateParameters(kp, ki, kd);
+// }
+
+void onMessageReceived(char* topic, byte* payload, unsigned int length) {
+    String topic_s(topic);
+    String payload_s((const char*)payload, length);
+
+    Serial.print("MQTT "); Serial.println(topic_s);
+
+    if (mqttman.handleUpdate(topic_s, payload_s)) {
+        return;
+    }
+
+    // // lupa/tuning/pressure/ki
+    // if (topic_s.startsWith("lupa/tuning/")) {
+    //     tuningParameterChanged(topic_s, payload_s);
+    //     return;
+    // }
+
+    HAComponentManager::onMessageReceived(topic, payload, length);
+}
+
 void HomeAssistant::init() {
     static String mac = WiFi.macAddress();
     context.mac_address = mac.c_str();
@@ -87,7 +171,7 @@ void HomeAssistant::init() {
     client.setBufferSize(HA_MQTT_MAX_PACKET_SIZE);
     client.setServer(secrets::mqtt_server, secrets::mqtt_port);
 
-    client.setCallback(HAComponentManager::onMessageReceived);
+    client.setCallback(onMessageReceived);
 
     isInitialized = true;
 }
@@ -109,9 +193,22 @@ void reportState() {
     sensor_isbrewing.reportState((state == State::MachineState::Brewing));
 }
 
+void initParamValues() {
+    float kp,ki,kd;
+    PressureControl::getParameters(&kp,&ki,&kd);
+    pid_sp.set(CONFIG_TARGET_BREW_PRESSURE);
+    pid_kp.set(kp);
+    pid_ki.set(ki);
+    pid_kd.set(kd);
+}
+
 void onConnect() {
     // Publish all components to HomeAssistant, and subscribe to any required topics
     HAComponentManager::publishConfigAll();
+
+    initParamValues();
+    mqttman.publishValues();
+    mqttman.subscribe();
 }
 
 void HomeAssistant::process() {

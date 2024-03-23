@@ -2,8 +2,8 @@
 #include <Arduino.h>
 
 void fPID::reset() {
-    this->offset = 0.0f;
-    this->setpoint = 0.0f;
+    this->p_offset = 0.0f;
+    //this->setpoint = 0.0f;
     this->last_input = 0.0f;
     this->accum = 0.0f;
     this->sample_time = 1000; // ms
@@ -42,6 +42,14 @@ void fPID::setOutputLimits(float min, float max) {
     this->out_max = max;
 }
 
+void fPID::setRegulationRange(float range) {
+    this->range = range;
+}
+
+void fPID::enableIntegral(bool en) {
+    this->en_integral = en;
+}
+
 float fPID::getKp() {
     return this->kp;
 }
@@ -60,7 +68,11 @@ float fPID::getSetpoint() {
 }
 
 void fPID::setPerturbationOffset(float offset) {
-    this->offset = offset;
+    this->p_offset = offset;
+}
+
+void fPID::setPlantOffset(float offset) {
+    this->static_offset = offset;
 }
 
 static inline void clamp(float &value, float min, float max) {
@@ -70,15 +82,20 @@ static inline void clamp(float &value, float min, float max) {
 
 float fPID::calculateTick(float input) {
     float error = (setpoint - input);
+    float error_abs = (error > 0.0f) ? error : -error;
     float output = 0.0f;
     float out_d = 0.0f;
     float out_i = 0.0f;
     float out_p = 0.0f;
 
-    // Calculate integral
-    this->accum += (ki * error);
-    clamp(accum, out_min, out_max);
-    out_i = accum;
+    // Only start accumulating integral if close to the regulation range
+    if (error_abs < this->range) {
+    //if (en_integral) {
+        // Calculate integral
+        this->accum += (ki * error);
+        clamp(accum, -out_max, out_max);
+        out_i = accum;
+    }
 
     // Calculate derivative
     //if (last_input > 0.0f) {
@@ -89,7 +106,7 @@ float fPID::calculateTick(float input) {
         float last_input = di_history.last();
         float di = (last_input - input);
 
-        Serial.printf("Curr:%.1f First:%.1f Last:%.1f\n", input, di_history.first(), di_history.last());
+        //Serial.printf("Curr:%.1f First:%.1f Last:%.1f\n", input, di_history.first(), di_history.last());
 
         // Positive di means input is falling, and we need to add a positive offset to correct for it.
         out_d = kd * di;
@@ -102,16 +119,15 @@ float fPID::calculateTick(float input) {
         di_history.add(input);
     }
 
-    // Add perturbation offset (affects Kp only)
-    error += this->offset;
+    // Calculate proportional with perturbation offset
+    out_p = (error + this->p_offset) * kp;
 
-    // Calculate proportional
-    out_p = error * kp;
+    output = out_p + out_i + out_d + this->static_offset;
 
-    output = out_p + out_i + out_d;
-
-    Serial.printf("PID: I:%.1f -> (P:%.1f,I:%.1f,D:%.1f,X:%.1f) -> O:%.1f\n", 
-        input, out_p, out_i, out_d, offset, output);
+    if (input < 100.0) {
+        Serial.printf("PID: I:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
+            input, error, out_p, out_i, out_d, static_offset, output);
+    }
 
     // Clamp output
     clamp(output, out_min, out_max);

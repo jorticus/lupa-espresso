@@ -120,6 +120,7 @@ void setup() {
         return;
     }
 
+    IO::initPwm();
     HomeAssistant::init();
 
     bool isSensorsInitialized = SensorSampler::initialize();
@@ -167,7 +168,7 @@ void loop()
         State::uiState != State::MachineState::Off)
     {
         HeatControl::processControlLoop();
-        //PressureControl::processControlLoop();
+        PressureControl::processControlLoop();
     }
 
     UI::render();
