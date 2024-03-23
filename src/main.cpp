@@ -26,7 +26,7 @@
 #include "HomeAssistant.h"
 #include <esp_task_wdt.h>
 
-#define WDT_TIMEOUT 1
+#define WDT_TIMEOUT 3
 
 Stream& Debug = Serial;
 
@@ -35,6 +35,8 @@ const char* DEVICE_NAME = "LUPA";
 
 Adafruit_MAX31865   rtd(MAX_CS, &Display::getSPIInstance());
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
+
+static bool s_failsafe = true;
 
 using namespace Display;
 
@@ -116,9 +118,14 @@ void setup() {
 
     // Enter fail-safe mode if we've encountered a firmware bug,
     // before proceeding further. This allows us to recover via OTA.
-    if (handle_reset()) {
+    if (handle_reset() || (digitalRead(PIN_IN_POWER_BTN) == HIGH)) {
         return;
     }
+#if defined(FAILSAFE_RECOVERY)
+    // Failsafe build
+    return;
+#endif
+    s_failsafe = false;
 
     IO::initPwm();
     HomeAssistant::init();
@@ -156,20 +163,22 @@ void loop()
     Network::handle();
     OTA::handle();
 
-    if (WiFi.status() == WL_CONNECTED) {
-        HomeAssistant::process();
+    if (!s_failsafe) {
+        if (WiFi.status() == WL_CONNECTED) {
+            HomeAssistant::process();
+        }
+
+        IO::process();
+        SensorSampler::process();
+        State::processState();
+
+        if (State::uiState != State::MachineState::FirmwareUpdate && 
+            State::uiState != State::MachineState::Off)
+        {
+            HeatControl::processControlLoop();
+            PressureControl::processControlLoop();
+        }
+    
+        UI::render();
     }
-
-    IO::process();
-    SensorSampler::process();
-    State::processState();
-
-    if (State::uiState != State::MachineState::FirmwareUpdate && 
-        State::uiState != State::MachineState::Off)
-    {
-        HeatControl::processControlLoop();
-        PressureControl::processControlLoop();
-    }
-
-    UI::render();
 }

@@ -242,6 +242,7 @@ void processControlLoop()
 }
 
 void setProfile(BoilerProfile mode) {
+    //mode = BoilerProfile::Off; // What the fuck? This causes the SensorSampler timer to crash???
     operating_profile = mode;
 
     Serial.print("Boiler heat profile: ");
