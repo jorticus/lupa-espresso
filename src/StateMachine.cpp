@@ -306,7 +306,7 @@ void processState()
         // This is supposed to put the device into a lower power state that keeps the boiler warm but ready to heat back up to full temperature.
         // Measurements showed this doesn't save much power.
         case MachineState::Sleep:
-            if (IO::isBrewing() || IO::isLeverPulled()) {
+            if (IO::isLeverPulled()) {
                 // When waking from sleep, go to preheat state if we're not yet up to temperature
                 if (SensorSampler::isTemperatureValid() && (!SensorSampler::isTemperatureStabilized())) {
                     uiState = MachineState::Preheat;
