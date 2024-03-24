@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "IO.h"
+#include "Debug.h"
 #include "StateMachine.h"
 #include "hardware.h"
 #include "button.h"
@@ -44,7 +45,7 @@ namespace IO {
 void onButtonPress(int pin) {
     switch (pin) {
         case 0: // POWER_BTN
-            Serial.println("PWR BTN PRESSED\n");
+            Debug.println("PWR BTN PRESSED\n");
 
             if (State::uiState == State::MachineState::Fault) {
                 esp_restart();
@@ -112,7 +113,7 @@ void initGpio() {
 
 void initPwm() {
     // This is separate from initGpio so the failsafe recovery code can detect failures in init here
-    Serial.println("Initializing PWM");
+    Debug.println("Initializing PWM");
 
 #ifdef USE_WATERLEVEL
     // Initialize touch sensor input, used to detect boiler water level
@@ -158,12 +159,12 @@ void readWaterLevel() {
             case 1: // Read touch channel and turn off sampling
             {
                 auto water_level_raw = touchRead(T0);
-                //Serial.printf("WaterLevel: %d\n", water_level_raw);
+                //Debug.printf("WaterLevel: %d\n", water_level_raw);
 
                 if (water_level_raw > water_threshold_high) {
                     if (fill_counter >= 5) {
                         if (!s_waterLow) {
-                            Serial.println("Boiler tank low");
+                            Debug.println("Boiler tank low");
                         }
                         s_waterLow = true;
                     }
@@ -174,12 +175,12 @@ void readWaterLevel() {
                 else if (water_level_raw < water_threshold_low) {
                     fill_counter = 0;
                     if (s_waterLow) {
-                        Serial.println("Boiler tank okay");
+                        Debug.println("Boiler tank okay");
                     }
                     s_waterLow = false;
                 }
 
-                //Serial.println("Stop touch sample");
+                //Debug.println("Stop touch sample");
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
                 touch_pad_filter_stop();
                 cycle = 0;
@@ -194,7 +195,7 @@ void readWaterLevel() {
 }
 
 void disableWaterLevel() {
-    //Serial.println("Disable touch sampling");
+    //Debug.println("Disable touch sampling");
     //touch_pad_filter_stop();
     s_waterLow = false;
 }
@@ -222,7 +223,7 @@ void updateBoilerPwm() {
             // Begin next cycle
             else {
                 s_boilerStartTs = t_now;
-                Serial.printf("Heat: %d/%d\n", s_boilerInterval, HEATER_PERIOD);
+                Debug.printf("Heat: %d/%d\n", s_boilerInterval, HEATER_PERIOD);
                 setHeat(true);
             }
         }
@@ -328,13 +329,13 @@ void setHeat(bool en) {
 
     if (en) {
         if (en != prev_value) {
-            Serial.println("HEAT: ON");
+            Debug.println("HEAT: ON");
         }
         digitalWrite(PIN_OUT_HEAT, HIGH);
     }
     else {
         if (en != prev_value) {
-            Serial.println("HEAT: OFF");
+            Debug.println("HEAT: OFF");
         }
         digitalWrite(PIN_OUT_HEAT, LOW);
     }
@@ -346,7 +347,7 @@ void setHeat(bool en) {
 void setPump(bool en) {
     static bool prev_value = LOW;
     if (en != prev_value) {
-        Serial.printf("PUMP: %s\n", en ? "ON" : "OFF");
+        Debug.printf("PUMP: %s\n", en ? "ON" : "OFF");
         prev_value = en;
     }
 
@@ -360,7 +361,7 @@ void setPump(bool en) {
 void setPumpDuty(float duty) {
 #if CONFIG_ENABLE_PRESSURE_PROFILING
     auto iduty = (uint8_t)((float)PUMP_DUTY_MAX * duty);
-    Serial.printf("Set pump duty = %d\n", iduty);
+    Debug.printf("Set pump duty = %d\n", iduty);
 
     if (duty <= 0.0f) {
         ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "PulseCounter.h"
+#include "Debug.h"
 #include <driver/timer.h>
 #include <driver/pcnt.h>
 #include <esp_intr_alloc.h>
@@ -60,7 +61,7 @@ void IRAM_ATTR PulseCounter::onTimer() {
     this->_isSampleReady = true;
 
     if (!_slowMode && (count < SLOW_TICK_COUNT_THRESHOLD)) {
-        //Serial.printf("count %d below slow threshold\n", count);
+        //Debug.printf("count %d below slow threshold\n", count);
         setSlowMode(true);
     }
 
@@ -73,7 +74,7 @@ void IRAM_ATTR PulseCounter::onPinChange() {
     pcnt_get_counter_value(this->_unit, &count);
 
     if (_slowMode && (count > FAST_TICK_COUNT_THRESHOLD)) {
-        //Serial.printf("count %d above fast threshold\n", count);
+        //Debug.printf("count %d above fast threshold\n", count);
         setSlowMode(false);
         return;
     }
@@ -116,7 +117,7 @@ bool PulseCounter::begin(int pin, int sampleWindowMs) {
 
     auto err = pcnt_unit_config(&config);
     if (err != ESP_OK) {
-        Serial.printf("ERROR: Could not configure PCNT peripheral: %x\n", err);
+        Debug.printf("ERROR: Could not configure PCNT peripheral: %x\n", err);
         return false;
     }
 
@@ -135,7 +136,7 @@ void PulseCounter::initTimer(int sampleWindowMs) {
         const int timerIdx = 0;
         const int timerDivider = 80;
 
-        Serial.println("Init timer");
+        Debug.println("Init timer");
 
         _timer = timerBegin(timerIdx, timerDivider, true);
 
@@ -151,14 +152,14 @@ void PulseCounter::setSlowMode(bool slow) {
         _timeDelta = 0;
         _timeCount = 0;
         
-        Serial.println("Slow mode");
+        Debug.println("Slow mode");
         __attachInterruptFunctionalArg(_interruptPin, &PulseCounter::pinChangeIsr, this, CHANGE, false);
     }
     else {
         _count = 0;
 
 #ifdef USE_PCNT_TIMER
-        Serial.println("Fast mode");
+        Debug.println("Fast mode");
         detachInterrupt(_interruptPin);
 #endif
     }
@@ -176,7 +177,7 @@ float PulseCounter::getFrequency() {
     float value = 0.0f;
     if (_slowMode) {
         if (_timeCount > 0) {
-            //Serial.printf("slow: %d/%d\n", _timeDelta, _timeCount);
+            //Debug.printf("slow: %d/%d\n", _timeDelta, _timeCount);
             // usecs/tick -> ticks/second
             value = 1000000.0f / (float)(_timeDelta / _timeCount);
 
@@ -187,9 +188,9 @@ float PulseCounter::getFrequency() {
     else {
         // ticks/timeInterval -> ticks/second
         value = (int)_count * 1000 / _sampleWindowMs;
-        //Serial.printf("fast: %d\n", _count);
+        //Debug.printf("fast: %d\n", _count);
     }
 
-    //Serial.printf("f: %.1f\n", value);
+    //Debug.printf("f: %.1f\n", value);
     return value;
 }

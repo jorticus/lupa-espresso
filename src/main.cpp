@@ -16,6 +16,7 @@
 //#include "value_array.h"
 #include "SensorSampler.h"
 #include "IO.h"
+#include "Debug.h"
 #include "StateMachine.h"
 #include "HeatControl.h"
 #include "PressureControl.h"
@@ -24,14 +25,10 @@
 #include "Network.h"
 #include "OTA.h"
 #include "HomeAssistant.h"
+#include "Panic.h"
 #include <esp_task_wdt.h>
 
 const uint32_t WDT_TIMEOUT_SEC = 3;
-
-Stream& Debug = Serial;
-
-/// @brief Network name of the device
-const char* DEVICE_NAME = "LUPA";
 
 Adafruit_MAX31865   rtd(MAX_CS, &Display::getSPIInstance());
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
@@ -40,36 +37,23 @@ static bool s_failsafe = true;
 
 using namespace Display;
 
-// int custom_vprintf(const char* str, va_list l) {
-//     static char buf[128];
-//     auto len = vsnprintf(buf, sizeof(buf), str, l);
-//     Debug.write("ESP:");
-//     return Debug.write(buf, len);
-// }
-
-extern "C" {
-    void clear_panic_buffer();
-    void print_panic_buffer();
-    const char* get_panic_buffer();
-}
-
 bool handle_reset() {
     auto reason = esp_reset_reason();
-    Serial.printf("Reset Reason: %d\n", reason);
+    Debug.printf("Reset Reason: %d\n", reason);
     if (reason == ESP_RST_PANIC || 
         reason == ESP_RST_INT_WDT ||
         reason == ESP_RST_WDT ||
         reason == ESP_RST_TASK_WDT)
     {
-        Serial.print("Last reset was due to ");
+        Debug.print("Last reset was due to ");
         switch (reason) {
-            case ESP_RST_PANIC: Serial.print("FW Panic"); break;
-            case ESP_RST_INT_WDT: Serial.print("INT WDT"); break;
-            case ESP_RST_WDT: Serial.print("WDT"); break;
-            case ESP_RST_TASK_WDT: Serial.print("Task WDT"); break;
-            default: Serial.print(reason);
+            case ESP_RST_PANIC:     Debug.print("FW Panic"); break;
+            case ESP_RST_INT_WDT:   Debug.print("INT WDT"); break;
+            case ESP_RST_WDT:       Debug.print("WDT"); break;
+            case ESP_RST_TASK_WDT:  Debug.print("Task WDT"); break;
+            default:                Debug.print(reason);
         }
-        Serial.println(", entering failsafe mode...");
+        Debug.println(", entering failsafe mode...");
 
         if (reason == ESP_RST_PANIC) {
             print_panic_buffer();
@@ -98,6 +82,8 @@ void initCritical() {
     Serial.begin(9600);
 
     IO::initGpio();
+    DebugLogger::init();
+
     Display::initDisplay();
     Network::initWiFi();
     OTA::initOTA();
@@ -162,7 +148,7 @@ void setup() {
     esp_task_wdt_init(WDT_TIMEOUT_SEC, true);
     esp_task_wdt_add(NULL); //add current thread to WDT watch
 
-    Serial.println("Done!");
+    Debug.println("Done!");
 }
 
 void loop()
@@ -171,13 +157,14 @@ void loop()
 
     Network::handle();
     OTA::handle();
+    DebugLogger::process();
+    IO::process();
 
     if (!s_failsafe) {
         if (WiFi.status() == WL_CONNECTED) {
             HomeAssistant::process();
         }
 
-        IO::process();
         SensorSampler::process();
         State::processState();
 
@@ -187,11 +174,7 @@ void loop()
             HeatControl::processControlLoop();
             PressureControl::processControlLoop();
         }
-    
-        UI::render();
     }
-    else {
-        IO::process();
-        UI::render();
-    }
+
+    UI::render();
 }

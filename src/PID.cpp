@@ -1,5 +1,6 @@
 #include <PID.h>
 #include <Arduino.h>
+#include "Debug.h"
 
 void fPID::reset() {
     this->p_offset = 0.0f;
@@ -107,7 +108,7 @@ float fPID::calculateTick(float input) {
         float last_input = di_history.last();
         float di = (last_input - input);
 
-        //Serial.printf("Curr:%.1f First:%.1f Last:%.1f\n", input, di_history.first(), di_history.last());
+        //Debug.printf("Curr:%.1f First:%.1f Last:%.1f\n", input, di_history.first(), di_history.last());
 
         // Positive di means input is falling, and we need to add a positive offset to correct for it.
         out_d = kd * di;
@@ -126,7 +127,7 @@ float fPID::calculateTick(float input) {
     output = out_p + out_i + out_d + this->static_offset;
 
     if (this->en_debug) {
-        Serial.printf("PID: I:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
+        Debug.printf("PID: I:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
             input, error, out_p, out_i, out_d, static_offset, output);
     }
 

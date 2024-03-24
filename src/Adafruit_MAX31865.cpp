@@ -65,8 +65,8 @@ bool Adafruit_MAX31865::begin(max31865_numwires_t wires) {
   setThresholds(0, 0xFFFF);
   clearFault();
 
-  // Serial.print("config: ");
-  // Serial.println(readRegister8(MAX31865_CONFIG_REG), HEX);
+  // Debug.print("config: ");
+  // Debug.println(readRegister8(MAX31865_CONFIG_REG), HEX);
   return true;
 }
 
@@ -254,7 +254,7 @@ float Adafruit_MAX31865::calculateTemperature(uint16_t RTDraw, float RTDnominal,
   Rt /= 32768;
   Rt *= refResistor;
 
-  // Serial.print("\nResistance: "); Serial.println(Rt, 8);
+  // Debug.print("\nResistance: "); Debug.println(Rt, 8);
 
   Z1 = -RTD_A;
   Z2 = RTD_A * RTD_A - (4 * RTD_B);

@@ -7,6 +7,7 @@
 #include "SensorSampler.h"
 #include "HeatControl.h"
 #include "IO.h"
+#include "Debug.h"
 #include "Network.h"
 #include "value_array.h"
 #include "secrets.h"
@@ -494,13 +495,13 @@ static uint32_t power_off_anim = 0;
 void triggerAnimation(Anim anim) {
     switch (anim) {
         case Anim::PowerOff:
-            Serial.println("Anim: Power Off");
+            Debug.println("Anim: Power Off");
             startup_anim = 0;
             power_off_anim = anim_steps;
             break;
 
         case Anim::PowerOn:
-            Serial.println("Anim: Power On");
+            Debug.println("Anim: Power On");
             power_off_anim = 0;
             startup_anim = anim_steps;
             break;
@@ -518,7 +519,7 @@ void uiRenderGlobalAnimations() {
         }
 
         float b = 1.0f - ((float)(startup_anim) / (float)anim_steps);
-        Serial.printf("%.1f (%d)\n", b, startup_anim);
+        Debug.printf("%.1f (%d)\n", b, startup_anim);
         Display::setBrightness(b * CONFIG_FULL_BRIGHTNESS);
 
 //Experimental growing ring animation
@@ -629,7 +630,7 @@ void render() {
 
     auto t3 = millis();
 
-    //Serial.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
+    //Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
 }
 
 

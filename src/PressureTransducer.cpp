@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "PressureTransducer.h"
+#include "Debug.h"
 
 #define REGISTER_SAMPLE_CONTROL     0x30
 #define REGISTER_PRESSURE_VALUE     0x06
@@ -74,14 +75,14 @@ bool PressureTransducer::readRegister(uint8_t reg, uint8_t* buf, size_t len) {
     Wire.beginTransmission(i2c_addr);
     Wire.write(reg);
     if (Wire.endTransmission() != 0) {
-        Serial.println("NACK from pressure");
+        Debug.println("NACK from pressure");
         return false;
     }
 
     Wire.requestFrom(i2c_addr, len);
     size_t n_bytes = Wire.readBytes(buf, len);
     if (n_bytes < sizeof(buf)) {
-        Serial.printf("ERROR: Received %d bytes, expected %d\n", n_bytes, len);
+        Debug.printf("ERROR: Pressure received %d bytes, expected %d\n", n_bytes, len);
         return false;
     }
 

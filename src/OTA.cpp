@@ -3,13 +3,12 @@
 #include "Display.h"
 #include "IO.h"
 #include "UI.h"
+#include "Debug.h"
 #include "StateMachine.h"
 #include "secrets.h"
 #include <esp_task_wdt.h>
 
 using namespace Display;
-
-extern const char* DEVICE_NAME;
 
 namespace OTA
 {
@@ -73,71 +72,72 @@ static void uiRenderFirmwareUpdate(OtaState state, int param) {
 
 
 void initOTA() {
-    ArduinoOTA.setHostname(DEVICE_NAME);
+    Debug.println("Starting OTA Server...");
 
+    ArduinoOTA.setHostname(secrets::device_name);
 
-	// No authentication by default
-	// ArduinoOTA.setPassword((const char *)"123");
+    // No authentication by default
+    // ArduinoOTA.setPassword((const char *)"123");
 
-	// Password can be set with it's md5 value as well
-	// MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-	// ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+    // Password can be set with it's md5 value as well
+    // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+    // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
-	ArduinoOTA.onStart([]() {
+    ArduinoOTA.onStart([]() {
         // Put system into a safe state
-		IO::failsafe();
+        IO::failsafe();
         State::setState(State::MachineState::FirmwareUpdate);
         Display::setBrightness(1.0f);
-		Serial.println("OTA Initiated");
+        Debug.println("OTA Initiated");
 
         esp_task_wdt_reset();
 
         uiRenderFirmwareUpdate(OtaState::Begin, 0);
-	});
+    });
 
-	ArduinoOTA.onEnd([]() {
-		Serial.println("OTA Done!");
+    ArduinoOTA.onEnd([]() {
+        Debug.println("OTA Done!");
 
         esp_task_wdt_reset();
 
         uiRenderFirmwareUpdate(OtaState::Success, 100);
-	});
+    });
 
-	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         // Throttle display updates to avoid slowing down the update
-		static int last_x = 0;
-		int x = (progress / (total / 20));
-		if (x != last_x) {
-		 	last_x = x;
+        static int last_x = 0;
+        int x = (progress / (total / 20));
+        if (x != last_x) {
+             last_x = x;
             int p = (progress * 100) / total;
             uiRenderFirmwareUpdate(OtaState::Progress, p);
         }
 
         esp_task_wdt_reset();
-	});
+    });
 
-	ArduinoOTA.onError([](ota_error_t error) {
-		Serial.println();
-		Serial.printf("Error[%u]: ", error);
+    ArduinoOTA.onError([](ota_error_t error) {
+        Debug.println();
+        Debug.printf("OTA Error[%u]: ", error);
         
         State::setFault(State::FaultState::FirmwareUpdateFailure);
 
         esp_task_wdt_reset();
 
-		if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-		else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-		else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-		else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-		else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        if (error == OTA_AUTH_ERROR)            Debug.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR)      Debug.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR)    Debug.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR)    Debug.println("Receive Failed");
+        else if (error == OTA_END_ERROR)        Debug.println("End Failed");
 
         uiRenderFirmwareUpdate(OtaState::Failure, (int)error);
 
-		delay(1000);
-		ESP.restart();
-	});
+        delay(1000);
+        ESP.restart();
+    });
 
-	// Enable OTA
-	ArduinoOTA.begin();
+    // Enable OTA
+    ArduinoOTA.begin();
 }
 
 void handle() {

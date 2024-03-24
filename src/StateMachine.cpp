@@ -3,6 +3,7 @@
 #include "Display.h"
 #include "IO.h"
 #include "UI.h"
+#include "Debug.h"
 #include "SensorSampler.h"
 #include "config.h"
 #include "HeatControl.h"
@@ -46,9 +47,9 @@ MachineState getState() {
 
 void setFault(FaultState state, const char* msg) {
     if (msg != nullptr) {
-        Serial.printf("FAULT: %d (%s)\n", state, msg);
+        Debug.printf("FAULT: %d (%s)\n", state, msg);
     } else {
-        Serial.printf("FAULT: %d\n", state);
+        Debug.printf("FAULT: %d\n", state);
     }
 
     uiState = MachineState::Fault;
@@ -60,22 +61,22 @@ void setFault(FaultState state, const char* msg) {
 static void printState(MachineState uiState) {
     int s = (int)uiState;
     if (s < sizeof(UiState_Str)) {
-        Serial.print(UiState_Str[s]);
+        Debug.print(UiState_Str[s]);
     }
     else {
-        Serial.print(s);
+        Debug.print(s);
     }
 }
 
 void resetIdleTimer() {
-    Serial.println("Reset idle timer\n");
+    Debug.println("Reset idle timer\n");
     t_idle_start = millis();
 }
 
 void setPowerControl(bool pwr)
 {
-    Serial.print("POWER: ");
-    Serial.println(pwr ? "ON" : "OFF");
+    Debug.print("POWER: ");
+    Debug.println(pwr ? "ON" : "OFF");
 
     if (pwr) {
         if (uiState == MachineState::Off || uiState == MachineState::Sleep) {
@@ -210,7 +211,7 @@ bool isPostBrewTimeoutElapsed() {
 
 void beginFillTankCycle()
 {
-    Serial.println("Boiler tank is low, activating fill cycle\n");
+    Debug.println("Boiler tank is low, activating fill cycle\n");
 
     IO::setWaterFillSolenoid(true);
     IO::setPump(true);
@@ -284,7 +285,7 @@ void processState()
 {
     static MachineState _lastUiState = MachineState::Init;
     if (uiState != _lastUiState) {
-        printState(_lastUiState); Serial.print("->"); printState(uiState); Serial.println();
+        printState(_lastUiState); Debug.print("->"); printState(uiState); Debug.println();
         onStateChanged(_lastUiState, uiState);
         _lastUiState = uiState;
     }
@@ -326,7 +327,7 @@ void processState()
             if (SensorSampler::isTemperatureValid()) {
                 auto t = SensorSampler::getTemperature();
                 if (CONFIG_DO_PID_TUNE && isTemperatureInTuningRange(t)) {
-                    Serial.println("Begin PID tuning...");
+                    Debug.println("Begin PID tuning...");
                     uiState = MachineState::Tuning;
                     break;
                 }
@@ -337,7 +338,7 @@ void processState()
                 }
                 // Close to boiler temperature, go to ready
                 else if (SensorSampler::isTemperatureStabilized()) {
-                    Serial.println("Temperature stabilized");
+                    Debug.println("Temperature stabilized");
                     uiState = MachineState::Ready;
                     resetIdleTimer();
                     break;
@@ -368,7 +369,7 @@ void processState()
             if (detectFaults()) break;
 
             if (isIdleTimeoutElapsed()) {
-                Serial.println("Idle timeout - going to sleep");
+                Debug.println("Idle timeout - going to sleep");
                 uiState = MachineState::Sleep;
                 break;
             }

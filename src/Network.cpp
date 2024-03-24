@@ -2,6 +2,7 @@
 #include "WiFi.h"
 #include "Display.h"
 #include "UI.h"
+#include "Debug.h"
 #include "secrets.h"
 
 using namespace Display;
@@ -89,18 +90,18 @@ void initWiFi()
 #if CONFIG_WAIT_FOR_WIFI
     while (WiFi.status() != WL_CONNECTED) {
         uiRenderWiFiConnect(WifiConnectionStatus::Connecting);
-        Serial.println();
+        Debug.println();
 
         startWiFi();
-        Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
+        Debug.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
 
         result = (wl_status_t)WiFi.waitForConnectResult();
         if (result != WL_CONNECTED) {
             uiRenderWiFiConnect(WifiConnectionStatus::Failure, result);
 
-            Serial.println("WiFi Diagnostics:");
+            Debug.println("WiFi Diagnostics:");
             WiFi.printDiag(Serial);
-            Serial.println();
+            Debug.println();
 
             delay(1000);
         }
@@ -108,15 +109,15 @@ void initWiFi()
 
     uiRenderWiFiConnect(WifiConnectionStatus::Connected);
 
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    Debug.print("IP address: ");
+    Debug.println(WiFi.localIP());
 
     delay(1500);
 #else
-    Serial.println("Connecting WiFi...");
+    Debug.println("Starting WiFi...");
     startWiFi();
     
-    //Serial.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
+    //Debug.printf("Connecting to SSID: %s\n", secrets::wifi_ssid); 
     //WiFi.waitForConnectResult();
 #endif
 }
@@ -139,8 +140,8 @@ void handle() {
     auto status = WiFi.status();
     if (last_status != status) {
         last_status = status; 
-        Serial.write("WiFi: ");
-        Serial.println(wifi_status_str[(int)status]);
+        Debug.write("WiFi: ");
+        Debug.println(wifi_status_str[(int)status]);
     }
 
     if (!(WiFi.getMode() & WIFI_MODE_STA) || 
@@ -155,7 +156,7 @@ void handle() {
             //WiFi.mode(WIFI_OFF);
             WiFi.disconnect(true, false);
             if (status != WL_DISCONNECTED) {
-                Serial.println("WiFi connection lost, reconnecting...");
+                Debug.println("WiFi connection lost, reconnecting...");
             }
             startWiFi();
         }

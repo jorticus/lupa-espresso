@@ -5,6 +5,7 @@
 //#include "HomeAssistant.h"
 #include "PID.h"
 #include "IO.h"
+#include "Debug.h"
 #include "hardware.h"
 #include "config.h"
 
@@ -86,7 +87,7 @@ void updatePidCoefficients() {
     pid.setPlantOffset(po);
     pid.reset();
 
-    Serial.printf("Pressure PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
+    Debug.printf("Pressure PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
         pid.getKp(),
         pid.getKi(),
         pid.getKd(),
@@ -105,7 +106,7 @@ void publishTuningData(float pid_input, float pid_output) {
         pid_input,
         pid_output
     );
-    Serial.printf("Tuning: %s\n", s);
+    Debug.printf("Tuning: %s\n", s);
     HomeAssistant::publishData("lupa/tuning/pressure", s);
 }
 #endif
@@ -146,11 +147,11 @@ float calculateTuningTick(float pid_input) {
 
         if (tuning_phase == n_phases) {
             output = 0.0f;
-            Serial.println("[ TUNING DONE ]");
+            Debug.println("[ TUNING DONE ]");
         }
         else {
             tuning_phase++;
-            Serial.printf("[ TUNING PHASE: %d ]\n", tuning_phase);
+            Debug.printf("[ TUNING PHASE: %d ]\n", tuning_phase);
             if ((tuning_phase & 1) == 0) {
                 // odd numbers
                 output = 0.0f; 
@@ -161,8 +162,8 @@ float calculateTuningTick(float pid_input) {
                 output = tuningPhaseSetpoint[tuning_phase >> 1];
                 tuning_interval_ms = 2*60*1000; // heat
             }
-            Serial.printf("Setpoint: %.1f\n", output);
-            Serial.printf("Interval: %dms\n", tuning_interval_ms);
+            Debug.printf("Setpoint: %.1f\n", output);
+            Debug.printf("Interval: %dms\n", tuning_interval_ms);
         }
     }
 
@@ -173,7 +174,7 @@ float calculateTuningTick(float pid_input) {
 void setPressure(float sp) {
     pid.setSetpoint(sp);
     //param_sp.set(sp);
-    Serial.printf("Target pressure: %.1f\n", sp);
+    Debug.printf("Target pressure: %.1f\n", sp);
 }
 
 void processControlLoop()
@@ -213,7 +214,7 @@ void processControlLoop()
                     pid_output = pid.calculateTick(pid_input);
                 }
 
-                //Serial.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid.getSetpoint(), pid_output);
+                //Debug.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid.getSetpoint(), pid_output);
 
                 IO::setPumpDuty(pid_output);
             }
@@ -224,18 +225,18 @@ void processControlLoop()
 void setProfile(PressureProfile mode) {
     operating_profile = mode;
 
-    Serial.print("Pressure profile: ");
+    Debug.print("Pressure profile: ");
     switch (mode) {
         case PressureProfile::Tuning:
-            Serial.println("Tuning");
+            Debug.println("Tuning");
             //pid_setpoint = CONFIG_BOILER_TUNING_TEMPERATURE_C;
             break;
         case PressureProfile::Manual:
-            Serial.println("Manual: Constant Pressure");
+            Debug.println("Manual: Constant Pressure");
             //pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
             break;
         case PressureProfile::AutoConstant:
-            Serial.println("Auto: Constant Pressure");
+            Debug.println("Auto: Constant Pressure");
     }
 
     //pid.setSetpoint(param_sp.value());
@@ -252,7 +253,7 @@ void start() {
     // PID will take over when it gets to it
     IO::setPump(true);
 
-    Serial.println("Start pressure profile");
+    Debug.println("Start pressure profile");
 }
 
 void stop() {
@@ -263,7 +264,7 @@ void stop() {
     // Immediately turn off pump for responsiveness
     IO::setPump(false);
 
-    Serial.println("Stop pressure profile");
+    Debug.println("Stop pressure profile");
 }
 
 bool isProfileComplete() {

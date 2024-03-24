@@ -5,6 +5,7 @@
 #include "MqttParamManager.h"
 #include "PID.h"
 #include "IO.h"
+#include "Debug.h"
 #include "hardware.h"
 #include "config.h"
 
@@ -82,7 +83,7 @@ void updatePidCoefficients() {
     pid.setPlantOffset(po);
     pid.reset();
 
-    Serial.printf("Boiler PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
+    Debug.printf("Boiler PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
         pid.getKp(),
         pid.getKi(),
         pid.getKd(),
@@ -99,7 +100,7 @@ void publishTuningData(float pid_input, float pid_output) {
         pid_input,
         pid_output
     );
-    Serial.printf("Tuning: %s\n", s);
+    Debug.printf("Tuning: %s\n", s);
     HomeAssistant::publishData("lupa/tuning/boiler", s);
 }
 
@@ -138,11 +139,11 @@ float calculateTuningTick(float pid_input) {
 
         if (tuning_phase == n_phases) {
             output = 0.0f;
-            Serial.println("[ TUNING DONE ]");
+            Debug.println("[ TUNING DONE ]");
         }
         else {
             tuning_phase++;
-            Serial.printf("[ TUNING PHASE: %d ]\n", tuning_phase);
+            Debug.printf("[ TUNING PHASE: %d ]\n", tuning_phase);
             if ((tuning_phase & 1) == 0) {
                 // odd numbers
                 output = 0.0f; 
@@ -153,8 +154,8 @@ float calculateTuningTick(float pid_input) {
                 output = tuningPhaseSetpoint[tuning_phase >> 1];
                 tuning_interval_ms = 2*60*1000; // heat
             }
-            Serial.printf("Setpoint: %.1f\n", output);
-            Serial.printf("Interval: %dms\n", tuning_interval_ms);
+            Debug.printf("Setpoint: %.1f\n", output);
+            Debug.printf("Interval: %dms\n", tuning_interval_ms);
         }
     }
 
@@ -191,7 +192,7 @@ void processControlLoop()
         // Not yet near the pid_setpoint, 100% duty until we get close
         if (pid_input < (pid.getSetpoint() - Defaults::RegulationRange)) {
             if (IO::getHeatPower() < 1.0f) {
-                Serial.printf("PREHEAT: %.1f\n", pid_input);
+                Debug.printf("PREHEAT: %.1f\n", pid_input);
             }
             //IO::setHeat(true);
             IO::setHeatPower(1.0f);
@@ -226,7 +227,7 @@ void processControlLoop()
                     pid_output = pid.calculateTick(pid_input);
                 }
 
-                //Serial.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
+                //Debug.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
 
                 IO::setHeatPower(pid_output * 0.01f);
             }
@@ -237,28 +238,28 @@ void processControlLoop()
 void setProfile(BoilerProfile mode) {
     operating_profile = mode;
 
-    Serial.print("Boiler heat profile: ");
+    Debug.print("Boiler heat profile: ");
     switch (mode) {
         case BoilerProfile::Off:
-            Serial.println("Off");
+            Debug.println("Off");
             pid.reset();
             break;
         case BoilerProfile::Brew:
-            Serial.println("Brew");
+            Debug.println("Brew");
             //pid.setSetpoint(CONFIG_BOILER_TEMPERATURE_C);
             pid.setSetpoint(param_boilerTemp.value());
             break;
         case BoilerProfile::Steam:
-            Serial.println("Steam");
+            Debug.println("Steam");
             //pid.setSetpoint(CONFIG_BOILER_STEAM_TEMPERATURE_C);
             pid.setSetpoint(param_steamTemp.value());
             break;
         case BoilerProfile::Idle:
-            Serial.println("Idle");
+            Debug.println("Idle");
             pid.setSetpoint(CONFIG_BOILER_IDLE_TEMPERATURE_C);
             break;
         case BoilerProfile::Tuning:
-            Serial.println("Tuning");
+            Debug.println("Tuning");
             pid.setSetpoint(CONFIG_BOILER_TUNING_TEMPERATURE_C);
             break;
     }

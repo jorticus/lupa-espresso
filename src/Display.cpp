@@ -2,6 +2,7 @@
 #include <TFT_eSPI.h>
 
 #include "Display.h"
+#include "Debug.h"
 #include "hardware.h"
 
 #define ENABLE_DISPLAY
@@ -19,7 +20,7 @@ void initDisplay() {
     digitalWrite(TFT_CS_LEFT, HIGH);
     digitalWrite(TFT_CS_RIGHT, HIGH);
 
-    Serial.println("Initialize LCD...");
+    Debug.println("Initialize LCD...");
 
     digitalWrite(TFT_CS_LEFT, LOW);
     tft.begin();
@@ -39,7 +40,7 @@ void initDisplay() {
     if (gfx_left.createSprite(TFT_WIDTH, TFT_HEIGHT) == nullptr || 
         gfx_right.createSprite(TFT_WIDTH, TFT_HEIGHT) == nullptr)
     {
-        Serial.println("ERROR: display buffer allocation failed!");
+        Debug.println("ERROR: display buffer allocation failed!");
         return;
     }
 
@@ -93,7 +94,7 @@ static uint8_t cie1931_table[] = {
 
 void setBrightness(float brightness) {
     uint8_t b = brightness * 0xFF;
-    Serial.printf("Brightness: %d\n", b);
+    Debug.printf("Display Brightness: %d\n", b);
     
     if (b > 0) {
         // Max duty is 8 bits (0xFF)

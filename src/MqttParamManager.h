@@ -2,9 +2,9 @@
 #include <vector>
 #include <functional>
 #include <PubSubClient.h>
+#include "Debug.h"
 
 namespace MqttParam {
-    extern Stream& Debug;
 
     const int MAX_PARAM_NAME_LEN = 64;
 
@@ -58,7 +58,7 @@ namespace MqttParam {
         void subscribe() {
             char buf[MAX_PARAM_NAME_LEN];
             snprintf(buf, sizeof(buf), "%s#", this->prefix);
-            Serial.printf("Subscribe to topic %s\n", buf);
+            Debug.printf("Subscribe to topic %s\n", buf);
             client.subscribe(buf);
         }
 
@@ -166,7 +166,7 @@ namespace MqttParam {
 
         bool handleUpdate(String payload) override {
             this->_value = strToValue<T>(payload);
-            Serial.printf("Param %s = ", this->name); Serial.println(this->_value);
+            Debug.printf("Param %s = ", this->name); Debug.println(this->_value);
             if (has_cb) {
                 update_cb(_value);
             }
@@ -177,7 +177,7 @@ namespace MqttParam {
             char topic[MAX_PARAM_NAME_LEN];
             snprintf(topic, sizeof(topic), "%s%s", manager.prefix, this->name);
             String value_str(this->_value);
-            Serial.printf("Publish topic %s\n", topic);
+            Debug.printf("Publish topic %s\n", topic);
             manager.client.publish(topic, value_str.c_str());
         }
 

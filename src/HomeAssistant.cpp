@@ -11,6 +11,7 @@
 #include "config.h"
 #include "PressureControl.h"
 #include "MqttParamManager.h"
+#include "Debug.h"
 //#include "version.h"
 
 // version.py
@@ -74,7 +75,7 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     String topic_s(topic);
     String payload_s((const char*)payload, length);
 
-    Serial.print("MQTT "); Serial.println(topic_s);
+    Debug.print("MQTT "); Debug.println(topic_s);
 
     if (MqttParam::handleUpdate(topic_s, payload_s)) {
         return;
@@ -143,7 +144,7 @@ void HomeAssistant::process() {
     if (!client.connected()) {
         // Throttle reconnection attempts
         if ((millis() - t_last_connect) > 1000) {
-            Serial.println("Connecting MQTT");
+            Debug.printf("Connecting to MQTT @ %s:%d\n", secrets::mqtt_server, secrets::mqtt_port);
 
             client.setSocketTimeout(2); // Must be less than the watchdog timer
             bool connected = HAComponentManager::connectClientWithAvailability(client, 
@@ -152,7 +153,7 @@ void HomeAssistant::process() {
                 secrets::mqtt_password);
 
             if (connected) {
-                Serial.println("MQTT connected, publishing config...");
+                Debug.println("MQTT connected, publishing config...");
                 onConnect();
                 reportState();
             }

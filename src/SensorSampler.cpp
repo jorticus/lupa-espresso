@@ -2,6 +2,7 @@
 #include <freertos/semphr.h>
 #include "SensorSampler.h"
 #include "StateMachine.h"
+#include "Debug.h"
 
 #include "value_array.h"
 #include "fir.h"
@@ -147,11 +148,11 @@ static void onSensorTimer(TimerHandle_t timer) {
 
     if (td > sampleRateMs) {
         // Above code took longer than the timer interval to execute
-        Serial.printf("TIMER1 OVERFLOW %d\n", td);
+        Debug.printf("TIMER1 OVERFLOW %d\n", td);
         td = sampleRateMs;
     }
 
-    // Serial.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
+    // Debug.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
     //     value_pressure,
     //     value_temperature,
     //     value_flow_rate,
@@ -160,7 +161,7 @@ static void onSensorTimer(TimerHandle_t timer) {
 
     auto interval = sampleRateMs - td;
     if (xTimerStart(timer1, pdMS_TO_TICKS(sampleRateMs)) != pdPASS) {
-        Serial.println("ERROR: Could not rearm timer1");
+        Debug.println("ERROR: Could not rearm timer1");
         State::setFault(State::FaultState::SensorFailure, "TIMER1");
     }
 }
@@ -187,7 +188,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
 
             // auto unfiltered_temp = calculateRtdTemperature(raw);
             // if (unfiltered_temp > 200.0f) {
-            //     Serial.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+            //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
             // }
 
             if (filter_temperature.isReady()) {
@@ -199,12 +200,12 @@ static void onTemperatureTimer(TimerHandle_t timer) {
                     is_valid_temperature = true;
                 }
                 else {
-                    Serial.printf("INVALID RTD T: %.2f (0x%x)\n", temperature, raw_filtered);
+                    Debug.printf("INVALID RTD T: %.2f (0x%x)\n", temperature, raw_filtered);
                     is_valid_temperature = false;
                 }
             }
         } else {
-            Serial.printf("INVALID RTD RAW: 0x%x\n", raw);
+            Debug.printf("INVALID RTD RAW: 0x%x\n", raw);
         }
     }
 
@@ -249,7 +250,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
             // flow into the system (flow1) minus the flow out of the system (flow2),
             // though this does not account for filling of the preinfusion chamber.
             //auto diff = (flow1_hz - flow2_hz);
-            //Serial.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
+            //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
 
             // The combined flowrate is a value between 0.0 and 1.0
             //filter_flowrate.add(diff);
@@ -295,24 +296,24 @@ static void onTemperatureTimer(TimerHandle_t timer) {
 
     if (td > temperatureSampleRateMs) {
         // Above code took longer than the timer interval to execute
-        Serial.println("TIMER2 OVERFLOW");
+        Debug.println("TIMER2 OVERFLOW");
         td = temperatureSampleRateMs;
     }
 
     auto interval = temperatureSampleRateMs - td;
     if (xTimerStart(timer, pdMS_TO_TICKS(interval)) != pdPASS) {
-        Serial.println("ERROR: Could not rearm timer2");
+        Debug.println("ERROR: Could not rearm timer2");
         State::setFault(State::FaultState::SensorFailure, "TIMER2");
     }
 
-    //Serial.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
+    //Debug.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
 }
 
 
 bool initPressure() {
-    Serial.println("Initialize Pressure");
+    Debug.println("Initialize Pressure");
     if (!pressure.begin()) {
-        Serial.println("ERROR: No response from pressure transducer");
+        Debug.println("ERROR: No response from pressure transducer");
         return false;
     }
     else {
@@ -321,7 +322,7 @@ bool initPressure() {
 }
 
 bool initTemperature() {
-    Serial.println("Initialize MAX31865");
+    Debug.println("Initialize MAX31865");
 
     pinMode(MAX_RDY, INPUT);
 
@@ -329,30 +330,30 @@ bool initTemperature() {
     rtd.enableBias(true);
     rtd.enable50Hz(true);
     
-    //Serial.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
-    //Serial.println("ERROR: No response from MAX");
+    //Debug.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
+    //Debug.println("ERROR: No response from MAX");
 
     rtd.readRTD();
     auto fault = rtd.readFault();
     if (fault) {
-        Serial.print("Fault 0x"); Serial.println(fault, HEX);
+        Debug.print("Fault 0x"); Debug.println(fault, HEX);
         if (fault & MAX31865_FAULT_HIGHTHRESH) {
-            Serial.println("RTD High Threshold"); 
+            Debug.println("RTD High Threshold"); 
         }
         if (fault & MAX31865_FAULT_LOWTHRESH) {
-            Serial.println("RTD Low Threshold"); 
+            Debug.println("RTD Low Threshold"); 
         }
         if (fault & MAX31865_FAULT_REFINLOW) {
-            Serial.println("REFIN- > 0.85 x Bias"); 
+            Debug.println("REFIN- > 0.85 x Bias"); 
         }
         if (fault & MAX31865_FAULT_REFINHIGH) {
-            Serial.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
+            Debug.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
         }
         if (fault & MAX31865_FAULT_RTDINLOW) {
-            Serial.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
+            Debug.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
         }
         if (fault & MAX31865_FAULT_OVUV) {
-            Serial.println("Under/Over voltage"); 
+            Debug.println("Under/Over voltage"); 
         }
     }
     else {
@@ -364,10 +365,10 @@ bool initTemperature() {
             continue;
         
         if (!rtd.isSampleReady()) {
-            Serial.println("Error: No sample");
+            Debug.println("Error: No sample");
         }
         else if (rtd.readSample() == 0) {
-            Serial.println("Error: Sample is zero");
+            Debug.println("Error: Sample is zero");
         }
 
         return true;
@@ -377,7 +378,7 @@ bool initTemperature() {
 }
 
 bool initFlow() {
-    Serial.println("Initialize Pulse Counter");
+    Debug.println("Initialize Pulse Counter");
 
     pinMode(FLOW1_PULSE_PIN, INPUT);
     pinMode(FLOW2_PULSE_PIN, INPUT);
@@ -387,7 +388,7 @@ bool initFlow() {
 
 
 bool initialize() {
-    Serial.println("Initialize Sensor Sampler");
+    Debug.println("Initialize Sensor Sampler");
 
     // NOTE: Do not use auto-reset for the timer,
     // as this may lead to an assert within the stack when it tries to reset the timer.
@@ -395,11 +396,11 @@ bool initialize() {
 
     timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdFALSE, nullptr, onTemperatureTimer);
     if (timer2 == nullptr) {
-        Serial.println("ERROR: Could not allocate SensorSamplerT timer");
+        Debug.println("ERROR: Could not allocate SensorSamplerT timer");
     }
     timer1 = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdFALSE, nullptr, onSensorTimer);
     if (timer1 == nullptr) {
-        Serial.println("ERROR: Could not allocate SensorSampler timer");
+        Debug.println("ERROR: Could not allocate SensorSampler timer");
     }
 
     bool isTemperatureAvailable = initTemperature();
@@ -410,7 +411,7 @@ bool initialize() {
 }
 
 void start() {
-    Serial.println("Start sensor sampler");
+    Debug.println("Start sensor sampler");
     xTimerStart(timer2, 0);
     xTimerStart(timer1, 0);
 
@@ -421,7 +422,7 @@ void start() {
 }
 
 void stop() {
-    Serial.printf("Stop sensor sampler");
+    Debug.printf("Stop sensor sampler");
     xTimerStop(timer1, 0);
     xTimerStop(timer2, 0);
 
