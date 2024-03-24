@@ -228,65 +228,6 @@ void processControlLoop()
 
                 IO::setHeatPower(pid_output * 0.01f);
             }
-
-
-#if false
-            auto t_now = millis();
-            if ((t_now - t_last_pid) >= Defaults::UpdatePeriodMs) {
-                t_last_pid = t_now;
-
-                if (operating_profile == BoilerProfile::Tuning) {
-                    pid_output = calculateTuningTick(pid_input);
-                    publishTuningData(pid_input, pid_output);
-                }
-                else {
-                    pid_output = pid.calculateTick(pid_input);
-                }
-
-                //Serial.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
-
-                if (pid_output > 0.0) {
-                    if (t_start == 0) {
-                        t_width = (unsigned long)(pid_output * (float)HEATER_PERIOD * 0.01f);
-                        if (t_width < HEATER_MIN_PERIOD) {
-                            t_width = 0;
-                            IO::setHeatPower(0.0);
-                            IO::setHeat(false);
-                        }
-                        else {
-                            IO::setHeatPower(pid_output * 0.01f);
-                        }
-                        
-                    }
-                }
-                else {
-                    IO::setHeatPower(0.0);
-                    IO::setHeat(false);
-                }
-            }
-
-            // Turn on heater every period, if non-zero
-            t_now = millis();
-            if ((t_now - t_last) >= HEATER_PERIOD) {
-                t_last = t_now;
-                if ((t_width >= HEATER_MIN_PERIOD) && (t_start == 0)) {
-                    t_start = t_now;
-                    Serial.printf("Heat: %d/%d\n", t_width, HEATER_PERIOD);
-                    IO::setHeat(true);
-                }
-            }
-
-            // Turn off heater after defined period
-            if ((t_start > 0) && ((t_now - t_start) > t_width)) {
-                // Keep heater on if at 100% duty (only turn off if width is less than max period)
-                if (t_width < (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
-                    IO::setHeat(false);
-                }
-
-                t_width = 0;
-                t_start = 0;
-            }
-#endif
         }
     }
 }
