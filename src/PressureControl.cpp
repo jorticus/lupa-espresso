@@ -19,7 +19,7 @@ namespace Defaults {
     static const float Ki = 0.01f; //Kp / 13.0f; // Ki = Kp / Tn
     static const float Kd = 0.0f;  //Kp * 5.0f; // Kd = Kp * Tv
     
-    static const float SetPoint = CONFIG_TARGET_BREW_PRESSURE;
+    //static const float SetPoint = CONFIG_TARGET_BREW_PRESSURE;
 
     // Static offset needed to reach steady-state, determined empirically
     // Helps prevent integral windup
@@ -46,11 +46,14 @@ static PressureProfile operating_profile = PressureProfile::Manual;
 void updatePidCoefficients();
 
 // Configuration parameters to expose to MQTT
-MqttParam::Parameter<float> param_sp("pid/bar/sp", Defaults::SetPoint,      [] (float val) { setPressure(val); });
+//MqttParam::Parameter<float> param_sp("pid/bar/sp", Defaults::SetPoint,      [] (float val) { setPressure(val); });
 MqttParam::Parameter<float> param_kp("pid/bar/kp", Defaults::Kp,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_ki("pid/bar/ki", Defaults::Ki,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_kd("pid/bar/kd", Defaults::Kd,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_po("pid/bar/po", Defaults::PlantOffset,   [] (float val) { updatePidCoefficients(); });
+
+MqttParam::Parameter<float> param_brewPressure("brew/pressure", CONFIG_TARGET_BREW_PRESSURE, [] (float val) { setPressure(val); });
+
 
 // Manual control of pump, for testing
 //MqttParam::Parameter<float> pump_duty("pump", [] (float val) { IO::setPumpDuty(val); });
@@ -63,7 +66,7 @@ void initControlLoop()
     pid.setOutputLimits(0.0f, 1.0f);
 
     pid.setParameters(Defaults::Kp, Defaults::Ki, Defaults::Kd);
-    pid.setSetpoint(Defaults::SetPoint);
+    pid.setSetpoint(CONFIG_TARGET_BREW_PRESSURE);
     pid.setPlantOffset(Defaults::PlantOffset);
     pid.setRegulationRange(Defaults::RegulationRange);
     //pid.setSampleTime(Defaults::UpdatePeriodMs); // TODO: tunings were calculated with 1000ms
@@ -169,7 +172,7 @@ float calculateTuningTick(float pid_input) {
 
 void setPressure(float sp) {
     pid.setSetpoint(sp);
-    param_sp.set(sp);
+    //param_sp.set(sp);
     Serial.printf("Target pressure: %.1f\n", sp);
 }
 
@@ -235,7 +238,7 @@ void setProfile(PressureProfile mode) {
             Serial.println("Auto: Constant Pressure");
     }
 
-    pid.setSetpoint(param_sp.value());
+    //pid.setSetpoint(param_sp.value());
 }
 
 void start() {

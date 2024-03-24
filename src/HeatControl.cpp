@@ -49,6 +49,8 @@ MqttParam::Parameter<float> param_ki("pid/boiler/ki", Defaults::Ki, [] (float va
 MqttParam::Parameter<float> param_kd("pid/boiler/kd", Defaults::Kd, [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_po("pid/boiler/po", Defaults::PlantOffset, [] (float val) { updatePidCoefficients(); });
 
+MqttParam::Parameter<float> param_boilerTemp("brew/boiler_temp", CONFIG_BOILER_TEMPERATURE_C,       [] (float val) { setProfile(operating_profile); });
+MqttParam::Parameter<float> param_steamTemp("brew/steam_temp",   CONFIG_BOILER_STEAM_TEMPERATURE_C, [] (float val) { setProfile(operating_profile);  });
 
 void initControlLoop()
 {
@@ -243,11 +245,13 @@ void setProfile(BoilerProfile mode) {
             break;
         case BoilerProfile::Brew:
             Serial.println("Brew");
-            pid.setSetpoint(CONFIG_BOILER_TEMPERATURE_C);
+            //pid.setSetpoint(CONFIG_BOILER_TEMPERATURE_C);
+            pid.setSetpoint(param_boilerTemp.value());
             break;
         case BoilerProfile::Steam:
             Serial.println("Steam");
-            pid.setSetpoint(CONFIG_BOILER_STEAM_TEMPERATURE_C);
+            //pid.setSetpoint(CONFIG_BOILER_STEAM_TEMPERATURE_C);
+            pid.setSetpoint(param_steamTemp.value());
             break;
         case BoilerProfile::Idle:
             Serial.println("Idle");
