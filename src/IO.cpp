@@ -153,7 +153,9 @@ void readWaterLevel() {
 
                 if (water_level_raw > water_threshold_high) {
                     if (fill_counter >= 5) {
-                        Serial.println("Boiler tank low");
+                        if (!s_waterLow) {
+                            Serial.println("Boiler tank low");
+                        }
                         s_waterLow = true;
                     }
                     else {
@@ -162,7 +164,9 @@ void readWaterLevel() {
                 }
                 else if (water_level_raw < water_threshold_low) {
                     fill_counter = 0;
-                    Serial.println("Boiler tank okay");
+                    if (s_waterLow) {
+                        Serial.println("Boiler tank okay");
+                    }
                     s_waterLow = false;
                 }
 
