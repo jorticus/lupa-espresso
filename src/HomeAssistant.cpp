@@ -199,6 +199,8 @@ void HomeAssistant::process() {
         // Throttle reconnection attempts
         if ((millis() - t_last_connect) > 1000) {
             Serial.println("Connecting MQTT");
+
+            client.setSocketTimeout(2); // Must be less than the watchdog timer
             bool connected = HAComponentManager::connectClientWithAvailability(client, 
                 secrets::device_name, 
                 secrets::mqtt_username, 
