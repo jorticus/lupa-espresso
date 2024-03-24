@@ -28,6 +28,9 @@ const float PUMP_DUTY_MAX = 255.0f;
 const uint8_t PUMP_DUTY_OFF = 0;
 const uint8_t PUMP_DUTY_ON = 0xFF;
 
+const unsigned long HEATER_MIN_PERIOD = 100;
+const unsigned long HEATER_PERIOD = 5000;
+
 extern "C" {
     uint8_t temprature_sens_read();
 }
@@ -197,6 +200,45 @@ void disableWaterLevel() {
 }
 #endif
 
+void updateBoilerPwm() {
+    static unsigned long t_last = 0;
+    static unsigned long s_boilerStartTs = 0;
+    static unsigned long s_boilerInterval = 0;
+
+    auto t_now = millis();
+    if ((t_now - t_last) >= HEATER_PERIOD) {
+        t_last = t_now;
+
+        if (s_boilerInterval == 0) {
+            // PWM not yet loaded, set the next interval
+            s_boilerInterval = (unsigned long)(s_heaterPower * (float)HEATER_PERIOD);
+
+            // Don't activate PWM if pulse is too short
+            if (s_boilerInterval < HEATER_MIN_PERIOD) {
+                s_boilerInterval = 0;
+                setHeat(false);
+                return;
+            }
+            // Begin next cycle
+            else {
+                s_boilerStartTs = t_now;
+                Serial.printf("Heat: %d/%d\n", s_boilerInterval, HEATER_PERIOD);
+                setHeat(true);
+            }
+        }
+    }
+
+    // Turn off heater after defined period
+    if ((s_boilerInterval > 0) && ((t_now - s_boilerStartTs) > s_boilerInterval)) {
+        // Keep heater on if at 100% duty (only turn off if width is less than max period)
+        if (s_boilerInterval < (HEATER_PERIOD - HEATER_MIN_PERIOD)) {
+            setHeat(false);
+        }
+
+        s_boilerInterval = 0;
+    }
+}
+
 void process() {
     // Debounce buttons
     buttons.process();
@@ -237,6 +279,8 @@ void process() {
         disableWaterLevel();
     }
 #endif
+
+    updateBoilerPwm();
 }
 
 bool isWaterTankLow() {
@@ -271,8 +315,12 @@ bool isBrewing() {
 }
 
 void setHeatPower(float duty) {
-    // TODO: Use this for setting heater PWM
     s_heaterPower = duty;
+
+    // Immediately turn off boiler, don't wait for next PWM cycle
+    if (duty <= 0.0f) {
+        setHeat(false);
+    }
 }
 
 void setHeat(bool en) {

@@ -70,55 +70,6 @@ HAComponent<Component::Sensor> sensor_power(context,
     SensorClass::Power
 );
 
-// void reportTuningParameters() {
-//     Serial.println("Publish PID parameters");
-//     float sp = CONFIG_TARGET_BREW_PRESSURE;
-//     float kp = 0.0f;
-//     float ki = 0.0f;
-//     float kd = 0.0f;
-//     PressureControl::getParameters(&kp, &ki, &kd);
-    
-//     String sp_s(sp);
-//     String kp_s(kp);
-//     String ki_s(ki);
-//     String kd_s(kd);
-//     client.publish("lupa/tuning/pressure/sp", sp_s.c_str());
-//     client.publish("lupa/tuning/pressure/kp", kp_s.c_str());
-//     client.publish("lupa/tuning/pressure/ki", ki_s.c_str());
-//     client.publish("lupa/tuning/pressure/kd", kd_s.c_str());
-// }
-
-// void tuningParameterChanged(String topic, String payload) {
-//     auto i1 = topic.lastIndexOf("/");
-//     auto param = topic.substring(i1+1);
-//     auto value = payload.toFloat();
-//     Debug.print("Parameter: "); Debug.print(param);
-//     Debug.print(" = ");
-//     Debug.print(value);
-//     Debug.printf(" '%s'", payload.c_str());
-//     Debug.println();
-
-//     if (param == "sp") {
-//         PressureControl::setPressure(value);
-//         return;
-//     }
-
-//     float kp = 0.0f;
-//     float ki = 0.0f;
-//     float kd = 0.0f;
-//     PressureControl::getParameters(&kp, &ki, &kd);
-//     if (param == "kp") {
-//         kp = value;
-//     }
-//     else if (param = "ki") {
-//         ki = value;
-//     }
-//     else if (param = "kd") {
-//         kd = value;
-//     }
-//     PressureControl::updateParameters(kp, ki, kd);
-// }
-
 void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     String topic_s(topic);
     String payload_s((const char*)payload, length);
@@ -128,12 +79,6 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     if (MqttParam::handleUpdate(topic_s, payload_s)) {
         return;
     }
-
-    // // lupa/tuning/pressure/ki
-    // if (topic_s.startsWith("lupa/tuning/")) {
-    //     tuningParameterChanged(topic_s, payload_s);
-    //     return;
-    // }
 
     HAComponentManager::onMessageReceived(topic, payload, length);
 }

@@ -57,16 +57,18 @@ MqttParam::Parameter<float> param_po("pid/bar/po", Defaults::PlantOffset,   [] (
 
 void initControlLoop()
 {
+    pid.reset();
+
     // Output between 0-100% duty cycle of pump
     pid.setOutputLimits(0.0f, 1.0f);
 
     pid.setParameters(Defaults::Kp, Defaults::Ki, Defaults::Kd);
-
-    pid.reset();
-
     pid.setSetpoint(Defaults::SetPoint);
     pid.setPlantOffset(Defaults::PlantOffset);
     pid.setRegulationRange(Defaults::RegulationRange);
+    //pid.setSampleTime(Defaults::UpdatePeriodMs); // TODO: tunings were calculated with 1000ms
+
+    pid.setDebugPrints(true);
 
     updatePidCoefficients();
 }
@@ -78,9 +80,8 @@ void updatePidCoefficients() {
     float po = param_po.value();
 
     pid.setParameters(kp, ki, kd);
-
-    pid.reset();
     pid.setPlantOffset(po);
+    pid.reset();
 
     Serial.printf("Pressure PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
         pid.getKp(),

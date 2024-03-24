@@ -2,20 +2,30 @@
 #include "SensorSampler.h"
 #include "HeatControl.h"
 #include "HomeAssistant.h"
+#include "MqttParamManager.h"
 #include "PID.h"
 #include "IO.h"
 #include "hardware.h"
 #include "config.h"
 
-// static double pid_input = 0.0;
-// static double pid_output = 0.0;
-// static double pid_last_output = 0.0;
-// static double pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
-static float pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
+namespace Defaults {
+    // How often PID is calculated
+    // NOTE: If this is changed, the coefficients will need to be updated too
+    static const unsigned long UpdatePeriodMs = 1000;
 
-static const float Kp = 10.0f;
-static const float Ki = Kp / 13.0f; // Ki = Kp / Tn
-static const float Kd = Kp * 5.0f; // Kd = Kp * Tv
+    static float SetPoint = CONFIG_BOILER_TEMPERATURE_C;
+
+    static const float Kp = 10.0f;
+    static const float Ki = Kp / 13.0f; // Ki = Kp / Tn
+    static const float Kd = Kp * 5.0f; // Kd = Kp * Tv
+
+    static const float PlantOffset = 0.0f;
+
+    static const float MaxBoilerTemperature = CONFIG_MAX_BOILER_TEMPERATURE_C;
+    static const float RegulationRange = CONFIG_BOILER_PID_RANGE_C;
+}
+
+
 
 // TODO: May need to incorporate another temperature probe for steam water,
 // as currently the control loop doesn't respond to a drop in main boiler temperature
@@ -25,39 +35,57 @@ static const float Kd = Kp * 5.0f; // Kd = Kp * Tv
 
 static fPID pid;
 
-static unsigned long t_start = 0;
-static unsigned long t_width = 0;
-
-const float PID_OUTPUT_MAX = 100.0f;
-const float PID_OUTPUT_MIN = 0.0f;
-const unsigned long HEATER_MIN_PERIOD = 100;
-const unsigned long HEATER_PERIOD = 5000;
-const unsigned long PID_PERIOD = 1000;
-
 const float MAX_BOILER_TEMPERATURE = CONFIG_MAX_BOILER_TEMPERATURE_C;
 
 namespace HeatControl {
 
 static BoilerProfile operating_profile = BoilerProfile::Off;
 
+void updatePidCoefficients();
+
+// Configuration parameters to expose to MQTT
+MqttParam::Parameter<float> param_kp("pid/boiler/kp", Defaults::Kp, [] (float val) { updatePidCoefficients(); });
+MqttParam::Parameter<float> param_ki("pid/boiler/ki", Defaults::Ki, [] (float val) { updatePidCoefficients(); });
+MqttParam::Parameter<float> param_kd("pid/boiler/kd", Defaults::Kd, [] (float val) { updatePidCoefficients(); });
+MqttParam::Parameter<float> param_po("pid/boiler/po", Defaults::PlantOffset, [] (float val) { updatePidCoefficients(); });
+
+
 void initControlLoop()
 {
-    pid.setOutputLimits(PID_OUTPUT_MIN, PID_OUTPUT_MAX);
-    pid.setParameters(Kp, Ki, Kd);
-    pid.setSetpoint(pid_setpoint);
     pid.reset();
+    pid.setOutputLimits(0.0f, 100.0f);
+    pid.setParameters(Defaults::Kp, Defaults::Ki, Defaults::Kd);
+    pid.setSetpoint(Defaults::SetPoint);
+    pid.setSampleTime(Defaults::UpdatePeriodMs);
+    pid.setPlantOffset(Defaults::PlantOffset);
+    //pid.setRegulationRange(Defaults::RegulationRange);
 
-    Serial.printf("Heater PID Parameters:\n\tKp: %.2f\n\tKi: %.2f\n\tKd: %.2f\n", 
-        pid.getKp(),
-        pid.getKi(),
-        pid.getKd()
-    );
+    updatePidCoefficients();
 
     // TODO: Prevent integral from going below 0, as it can
     // take a LOT longer to cool down than it will to warm up,
     // so the integral term will work against us.
 
     setProfile(BoilerProfile::Brew);
+}
+
+
+void updatePidCoefficients() {
+    float kp = param_kp.value();
+    float ki = param_ki.value();
+    float kd = param_kd.value();
+    float po = param_po.value();
+
+    pid.setParameters(kp, ki, kd);
+    pid.setPlantOffset(po);
+    pid.reset();
+
+    Serial.printf("Boiler PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
+        pid.getKp(),
+        pid.getKi(),
+        pid.getKd(),
+        po
+    );
 }
 
 void publishTuningData(float pid_input, float pid_output) {
@@ -145,29 +173,32 @@ void processControlLoop()
         IO::isBoilerTankLow() ||
         (operating_profile == BoilerProfile::Off))
     {
-        IO::setHeat(false);
+        //IO::setHeat(false);
         IO::setHeatPower(0.0f);
     }
     else {
         float pid_input = SensorSampler::getTemperature();
 
-        if (pid_input > MAX_BOILER_TEMPERATURE) {
-            IO::setHeat(false);
+        if (pid_input > Defaults::MaxBoilerTemperature) {
+            //IO::setHeat(false);
             IO::setHeatPower(0.0f);
+            pid.reset();
             return;
         }
 
         // Not yet near the pid_setpoint, 100% duty until we get close
-        if (pid_input < (pid_setpoint - CONFIG_BOILER_PID_RANGE_C)) {
+        if (pid_input < (pid.getSetpoint() - Defaults::RegulationRange)) {
             if (IO::getHeatPower() < 1.0f) {
                 Serial.printf("PREHEAT: %.1f\n", pid_input);
             }
-            IO::setHeat(true);
+            //IO::setHeat(true);
             IO::setHeatPower(1.0f);
+            pid.reset();
             return;
         }
         else {
 
+#if false
             // Override PID when water is flowing
             float offset = 0.0f;
             if (SensorSampler::isFlowRateValid()) {
@@ -179,9 +210,29 @@ void processControlLoop()
                 }
             }
             pid.setPerturbationOffset(offset);
+#endif
 
             auto t_now = millis();
-            if ((t_now - t_last_pid) >= PID_PERIOD) {
+            if ((t_now - t_last_pid) >= Defaults::UpdatePeriodMs) {
+                t_last_pid = t_now;
+
+                if (operating_profile == BoilerProfile::Tuning) {
+                    pid_output = calculateTuningTick(pid_input);
+                    publishTuningData(pid_input, pid_output);
+                }
+                else {
+                    pid_output = pid.calculateTick(pid_input);
+                }
+
+                //Serial.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
+
+                IO::setHeatPower(pid_output * 0.01f);
+            }
+
+
+#if false
+            auto t_now = millis();
+            if ((t_now - t_last_pid) >= Defaults::UpdatePeriodMs) {
                 t_last_pid = t_now;
 
                 if (operating_profile == BoilerProfile::Tuning) {
@@ -235,42 +286,37 @@ void processControlLoop()
                 t_width = 0;
                 t_start = 0;
             }
-
+#endif
         }
-
     }
 }
 
 void setProfile(BoilerProfile mode) {
-    //mode = BoilerProfile::Off; // What the fuck? This causes the SensorSampler timer to crash???
     operating_profile = mode;
 
     Serial.print("Boiler heat profile: ");
     switch (mode) {
         case BoilerProfile::Off:
-            //pid_setpoint = 0.0f;
-            // TODO: Reset/Disable PID controller
             Serial.println("Off");
+            pid.reset();
             break;
         case BoilerProfile::Brew:
             Serial.println("Brew");
-            pid_setpoint = CONFIG_BOILER_TEMPERATURE_C;
+            pid.setSetpoint(CONFIG_BOILER_TEMPERATURE_C);
             break;
         case BoilerProfile::Steam:
             Serial.println("Steam");
-            pid_setpoint = CONFIG_BOILER_STEAM_TEMPERATURE_C;
+            pid.setSetpoint(CONFIG_BOILER_STEAM_TEMPERATURE_C);
             break;
         case BoilerProfile::Idle:
             Serial.println("Idle");
-            pid_setpoint = CONFIG_BOILER_IDLE_TEMPERATURE_C;
+            pid.setSetpoint(CONFIG_BOILER_IDLE_TEMPERATURE_C);
             break;
         case BoilerProfile::Tuning:
             Serial.println("Tuning");
-            pid_setpoint = CONFIG_BOILER_TUNING_TEMPERATURE_C;
+            pid.setSetpoint(CONFIG_BOILER_TUNING_TEMPERATURE_C);
             break;
     }
-
-    pid.setSetpoint(pid_setpoint);
 }
 
 BoilerProfile getProfile() {

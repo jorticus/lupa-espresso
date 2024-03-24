@@ -10,6 +10,7 @@ class fPID {
 public:
     fPID() : 
         di_history(), 
+        sample_time(1000),
         kp(0), ki(0), kd(0),
         setpoint(0.0f), 
         p_offset(0.0f), static_offset(0.0f),
@@ -17,7 +18,8 @@ public:
         accum(0.0f),
         out_min(0.0f), out_max(0.0f),
         range(infinityf()),
-        en_integral(true)
+        en_integral(true),
+        en_debug(false)
     {
         reset();
     }
@@ -25,7 +27,12 @@ public:
     /// @brief Reset the system including any integral windup or derivative averaging.
     void reset();
 
+    /// @brief Set the sample update time. This MUST match the same rate that you call calculateTick().
     void setSampleTime(unsigned long time);
+
+    /// @brief Enable/disable debug prints of internal state
+    /// @param en 
+    void setDebugPrints(bool en);
 
     /// @brief Apply new coefficients. System will be reset to initial values, including any integral windup.
     /// @param kp Proportional coefficient
@@ -83,6 +90,7 @@ protected:
     float out_min, out_max;
     float range;
     bool en_integral;
+    bool en_debug;
 
     // Sample history for computing the derivative term
     ValueArray<float, 10> di_history;

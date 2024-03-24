@@ -3,10 +3,8 @@
 
 void fPID::reset() {
     this->p_offset = 0.0f;
-    //this->setpoint = 0.0f;
     this->last_input = 0.0f;
     this->accum = 0.0f;
-    this->sample_time = 1000; // ms
     this->last_t = millis();
 }
 
@@ -21,6 +19,10 @@ void fPID::setSampleTime(unsigned long time) {
 
     // Invalidate any accumulated state
     reset();
+}
+
+void fPID::setDebugPrints(bool en) {
+    this->en_debug = en;
 }
 
 void fPID::setParameters(float kp, float ki, float kd) {
@@ -124,7 +126,7 @@ float fPID::calculateTick(float input) {
 
     output = out_p + out_i + out_d + this->static_offset;
 
-    if (input < 100.0) {
+    if (this->en_debug) {
         Serial.printf("PID: I:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
             input, error, out_p, out_i, out_d, static_offset, output);
     }
