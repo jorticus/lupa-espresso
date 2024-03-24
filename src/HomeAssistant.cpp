@@ -23,7 +23,6 @@ WiFiClient net;
 
 PubSubClient client(net);
 ComponentContext context(client);
-MqttParamManager mqttman(client, "lupa/param/");
 
 const unsigned long sensor_sample_interval_ms = 5000;
 const unsigned long slow_sensor_sample_interval = 60*1000; // 1 min
@@ -70,19 +69,6 @@ HAComponent<Component::Sensor> sensor_power(context,
     0.0f,
     SensorClass::Power
 );
-
-void updatePidParameters();
-
-MqttParam<float> pid_sp(mqttman, "pid/bar/sp", [] (float val) { PressureControl::setPressure(val); });
-MqttParam<float> pid_kp(mqttman, "pid/bar/kp", [] (float val) { updatePidParameters(); });
-MqttParam<float> pid_ki(mqttman, "pid/bar/ki", [] (float val) { updatePidParameters(); });
-MqttParam<float> pid_kd(mqttman, "pid/bar/kd", [] (float val) { updatePidParameters(); });
-
-MqttParam<float> pump_duty(mqttman, "pump", [] (float val) { IO::setPumpDuty(val); });
-
-void updatePidParameters() {
-    PressureControl::updateParameters(pid_kp.value(), pid_ki.value(), pid_kd.value());
-}
 
 // void reportTuningParameters() {
 //     Serial.println("Publish PID parameters");
@@ -139,7 +125,7 @@ void onMessageReceived(char* topic, byte* payload, unsigned int length) {
 
     Serial.print("MQTT "); Serial.println(topic_s);
 
-    if (mqttman.handleUpdate(topic_s, payload_s)) {
+    if (MqttParam::handleUpdate(topic_s, payload_s)) {
         return;
     }
 
@@ -193,22 +179,12 @@ void reportState() {
     sensor_isbrewing.reportState((state == State::MachineState::Brewing));
 }
 
-void initParamValues() {
-    float kp,ki,kd;
-    PressureControl::getParameters(&kp,&ki,&kd);
-    pid_sp.set(CONFIG_TARGET_BREW_PRESSURE);
-    pid_kp.set(kp);
-    pid_ki.set(ki);
-    pid_kd.set(kd);
-}
-
 void onConnect() {
     // Publish all components to HomeAssistant, and subscribe to any required topics
     HAComponentManager::publishConfigAll();
 
-    initParamValues();
-    mqttman.publishValues();
-    mqttman.subscribe();
+    // Publish parameters to MQTT, and subscribe for change notifications
+    MqttParam::publish();
 }
 
 void HomeAssistant::process() {

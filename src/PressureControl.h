@@ -14,11 +14,12 @@ namespace PressureControl {
         AutoConstant
     };
 
+    /// @brief Set the target brew pressure (manual pressure profile)
     void setPressure(float sp);
 
-    void updateParameters(float p, float i, float d);
+    // void updateParameters(float p, float i, float d);
 
-    void getParameters(float* p, float* i, float* d);
+    // void getParameters(float* p, float* i, float* d);
 
     /// @brief Initialize control loop parameters
     void initControlLoop();
@@ -26,15 +27,19 @@ namespace PressureControl {
     /// @brief Calculate next tick of the control loop
     void processControlLoop();
 
+    /// @brief Start pressure profiling (activate pump)
     void start();
 
+    /// @brief Stop pressure profiling (deactivate pump)
     void stop();
 
+    /// @brief Whether the profile is complete
+    /// @return true if the profile has finished (shot has been completed)
     bool isProfileComplete();
 
-    /// @brief Set the target profile
+    /// @brief Set the pressure profile to follow during the brew
     void setProfile(PressureProfile profile);
 
-    /// @brief Get the current profile
+    /// @brief Get the current pressure profile
     PressureProfile getProfile();
 }

@@ -92,24 +92,9 @@ bool handle_reset() {
 void setup() {
     Serial.begin(9600);
 
+    // Disable watchdog during init to give system time to boot.
+    // The WiFi especially can take a significant amount of time to connect.
     esp_task_wdt_init(10, false);
-
-    pinMode(I2C_SDA, INPUT_PULLUP);
-    pinMode(I2C_SCL, INPUT_PULLUP);
-    Wire.setPins(I2C_SDA, I2C_SCL);
-    Wire.begin();
-
-    // The following devices share the same SPI bus. 
-    // Ensure all CS pins are de-asserted.
-    pinMode(TFT_CS_LEFT, OUTPUT);
-    pinMode(TFT_CS_RIGHT, OUTPUT);
-    pinMode(MAX_CS, OUTPUT);
-    digitalWrite(MAX_CS, HIGH);
-    digitalWrite(TFT_CS_LEFT, HIGH);
-    digitalWrite(TFT_CS_RIGHT, HIGH);
-
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, LOW);
 
     IO::initGpio();
     Display::initDisplay();

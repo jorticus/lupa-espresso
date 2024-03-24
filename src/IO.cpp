@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Wire.h>
 #include "IO.h"
 #include "StateMachine.h"
 #include "hardware.h"
@@ -17,14 +18,14 @@
 const touch_value_t water_threshold_high = 20;
 const touch_value_t water_threshold_low = 10;
 
-static bool s_isHeaterOn = false;
+static bool  s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
-static bool s_waterLow = false;
+static bool  s_waterLow = false;
 
-static TimerHandle_t pwm_timer;
-static TimerHandle_t pwm_timer_low;
-static const unsigned long pwm_interval = 100;
-static volatile unsigned long pwm_duty = 0;
+const float PUMP_DUTY_MIN = 67.0f;  // Depends on configured ledc frequency
+const float PUMP_DUTY_MAX = 255.0f;
+const uint8_t PUMP_DUTY_OFF = 0;
+const uint8_t PUMP_DUTY_ON = 0xFF;
 
 extern "C" {
     uint8_t temprature_sens_read();
@@ -62,37 +63,31 @@ void failsafe() {
     s_heaterPower = 0.0f;
 }
 
-static void onTimerTick(TimerHandle_t timer) {
-    // atomic load from volatile
-    auto duty = pwm_duty;
-    auto interval = pwm_interval;
-
-    if (duty < 5) {
-        // Remain off (0%)
-    }
-    else {
-
-        //Serial.printf("PWM ON: %d/%d\n", duty, interval);
-        digitalWrite(PIN_OUT_PUMP, HIGH);
-
-        //if (duty < interval) {
-            if (xTimerStart(pwm_timer_low, pdMS_TO_TICKS(duty)) != pdPASS) {
-                State::setFault(State::FaultState::SensorFailure, "PWM");
-            }
-        //}
-        // else, remain on (100%)
-    }
-}
-
-static void onTimerLowTick(TimerHandle_t timer) {
-    //Serial.printf("PWM: OFF1\n");
-    digitalWrite(PIN_OUT_PUMP, LOW);
-}
-
 void initGpio() {
+    // Pressure sensors
+    pinMode(I2C_SDA, INPUT_PULLUP);
+    pinMode(I2C_SCL, INPUT_PULLUP);  // I2C #1
+    pinMode(I2C_SCL2, INPUT_PULLUP); // I2C #2
+    Wire.setPins(I2C_SDA, I2C_SCL);
+    Wire.begin();
+
+    // The following devices share the same SPI bus. 
+    // Ensure all CS pins are de-asserted.
+    pinMode(TFT_CS_LEFT, OUTPUT);
+    pinMode(TFT_CS_RIGHT, OUTPUT);
+    pinMode(MAX_CS, OUTPUT);
+    digitalWrite(MAX_CS, HIGH);
+    digitalWrite(TFT_CS_LEFT, HIGH);
+    digitalWrite(TFT_CS_RIGHT, HIGH);
+
+    // Turn off display backlight
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, LOW);
+
     // BOOT button used for debugging
     pinMode(0, INPUT);
 
+    // Inputs & Outputs
     pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);
     pinMode(PIN_IN_WATER_LOW, INPUT);
@@ -100,7 +95,16 @@ void initGpio() {
     pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
 
+    // Set callback for power button (debouncd)
     buttons.onButtonPress(onButtonPress);
+
+    // Just to be consistent, set IO into failsafe mode (outputs off)
+    failsafe();
+}
+
+void initPwm() {
+    // This is separate from initGpio so the failsafe recovery code can detect failures in init here
+    Serial.println("Initializing PWM");
 
 #ifdef USE_WATERLEVEL
     // Initialize touch sensor input, used to detect boiler water level
@@ -110,23 +114,20 @@ void initGpio() {
     touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
 #endif
 
-    failsafe();
-}
 
-void initPwm() {
-    Serial.println("Initializing soft PWM");
-    // Soft PWM
-    // pwm_timer = xTimerCreate("PWM1H", pdMS_TO_TICKS(pwm_interval), pdTRUE, nullptr, onTimerTick);
-    // pwm_timer_low = xTimerCreate("PWM1L", pdMS_TO_TICKS(0), pdFALSE, nullptr, onTimerLowTick);
-
-    //xTimerStart(pwm_timer, 0);
+#if CONFIG_ENABLE_PRESSURE_PROFILING
+    // Configure LEDC peripheral for pump PWM output.
+    // The pump is driven by an SSR with zero-crossing detection,
+    // so there is a minimum pulse width of 10ms (one half-cycle of 50Hz AC).
+    // Anything less will not activate the pump.
 
     // uint8_t group=(chan/8), timer=((chan/2)%4);
-    //ledcSetup(LEDC_CH_PUMP, 5, 8); // CH1 5Hz Min 0.78ms (Min duty for 20ms pulse = 25)
-    //ledcSetup(LEDC_CH_PUMP, 10, 8); // CH1 10Hz
-    ledcSetup(LEDC_CH_PUMP, 15, 8); // CH1 15Hz
+    //ledcSetup(LEDC_CH_PUMP, 5, 8);  // CH1 5Hz, Min duty 20
+    //ledcSetup(LEDC_CH_PUMP, 10, 8); // CH1 10Hz, Min duty 10  -- this seems to be unstable with PID loop
+    ledcSetup(LEDC_CH_PUMP, 15, 8);  // CH1 15Hz, Min duty 67
     ledcAttachPin(PIN_OUT_PUMP, LEDC_CH_PUMP);
-    ledcWrite(LEDC_CH_PUMP, 0);
+    ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
+#endif
 }
 
 #ifdef USE_WATERLEVEL
@@ -152,6 +153,7 @@ void readWaterLevel() {
 
                 if (water_level_raw > water_threshold_high) {
                     if (fill_counter >= 5) {
+                        Serial.println("Boiler tank low");
                         s_waterLow = true;
                     }
                     else {
@@ -160,6 +162,7 @@ void readWaterLevel() {
                 }
                 else if (water_level_raw < water_threshold_low) {
                     fill_counter = 0;
+                    Serial.println("Boiler tank okay");
                     s_waterLow = false;
                 }
 
@@ -185,24 +188,16 @@ void disableWaterLevel() {
 #endif
 
 void process() {
+    // Debounce buttons
     buttons.process();
 
-//     static unsigned long t_last2 = 0;
-//     if ((millis() - t_last2) > 10000) {
-//         t_last2 = millis();
-
-//         auto itemp = temprature_sens_read();
-//         Serial.printf("iTemp: %d\n", itemp);
-//     }
-
     auto state = State::getState();
-
     if (state == State::MachineState::Fault) {
         s_waterLow = false;
         return;
     }
 
-#if !CONFIG_PRESSURE_PROFILING
+#if !CONFIG_ENABLE_PRESSURE_PROFILING
     // Activate pump when lever pulled.
     // This is separate from the Brewing state logic to keep things simple.
     // In the future we could modulate the pump to give flow or pressure control.
@@ -259,10 +254,9 @@ bool isLeverPulled() {
 
 bool isBrewing() {
     return (
-        (State::uiState != State::MachineState::Preheat) && 
         (State::uiState != State::MachineState::FillTank) &&
-        SensorSampler::isFlowing() // Water is flowing to grouphead (and not filling boiler)
-       // isLeverPulled()
+        SensorSampler::isFlowing() && // Water is flowing to grouphead (and not filling boiler)
+        isLeverPulled()
     );
 }
 
@@ -298,27 +292,28 @@ void setPump(bool en) {
         prev_value = en;
     }
 
-    pwm_duty = 0; // Disable PWM output, manual override
-    //ledcWrite(LEDC_CH_PUMP, en ? 0xFF : 0);
-    setPumpDuty(en ? 0xFF : 0);
-    //digitalWrite(PIN_OUT_PUMP, en);
-
-    // TODO: Set a watchdog timer that turns this off after X seconds
+#if CONFIG_ENABLE_PRESSURE_PROFILING
+    setPumpDuty(en ? PUMP_DUTY_ON : PUMP_DUTY_OFF);
+#else
+    digitalWrite(PIN_OUT_PUMP, en);
+#endif
 }
 
 void setPumpDuty(float duty) {
-    auto iduty = (uint8_t)(256.0 * duty);
+#if CONFIG_ENABLE_PRESSURE_PROFILING
+    auto iduty = (uint8_t)((float)PUMP_DUTY_MAX * duty);
     Serial.printf("Set pump duty = %d\n", iduty);
 
     if (duty <= 0.0f) {
-        ledcWrite(LEDC_CH_PUMP, 0);
+        ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
     }
     else if (duty >= 1.0f) {
-        ledcWrite(LEDC_CH_PUMP, 0xFF);
+        ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_ON);
     }
     else {
         ledcWrite(LEDC_CH_PUMP, iduty);
     }
+#endif
 }
 
 void setWaterFillSolenoid(bool en) {

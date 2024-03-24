@@ -6,6 +6,7 @@ namespace IO {
     /// @brief Initialize GPIO
     void initGpio();
 
+    /// @brief Initialize PWM outputs
     void initPwm();
 
     /// @brief Handle inputs
@@ -42,15 +43,17 @@ namespace IO {
     /// @param en Heater power on/off
     void setHeat(bool en);
 
-    /// @brief Set pump state immediately
+    /// @brief Set pump state immediately (equivalent to setPumpDuty(0.0 : 1.0))
     /// @param en Pump on/off
     void setPump(bool en);
+
+    /// @brief Set pump duty cycle
+    /// @param duty Duty cycle between 0.0 and 1.0
+    void setPumpDuty(float duty);
 
     /// @brief Set water fill solenoid state immediately
     /// @param en Solenoid on/off
     void setWaterFillSolenoid(bool en);
-
-    void setPumpDuty(float duty);
 
 // Output State
 

@@ -64,4 +64,4 @@
 #define CONFIG_BOILER_FULL_POWER_WATTS (1333.0f)
 
 // Whether to enable pressure profiling (PID control of pressure during brew)
-#define CONFIG_PRESSURE_PROFILING (true)
+#define CONFIG_ENABLE_PRESSURE_PROFILING (true)
