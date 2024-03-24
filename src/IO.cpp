@@ -18,6 +18,7 @@
 const touch_value_t water_threshold_high = 20;
 const touch_value_t water_threshold_low = 10;
 
+static bool s_isPwmInitialized = false;
 static bool  s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 static bool  s_waterLow = false;
@@ -59,6 +60,10 @@ void failsafe() {
     digitalWrite(PIN_OUT_HEAT, LOW);
     digitalWrite(PIN_OUT_PUMP, LOW);
     digitalWrite(PIN_OUT_FILL_SOLENOID, LOW);
+
+    if (s_isPwmInitialized) {
+        ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
+    }
 
     s_heaterPower = 0.0f;
 }
@@ -127,6 +132,7 @@ void initPwm() {
     ledcSetup(LEDC_CH_PUMP, 15, 8);  // CH1 15Hz, Min duty 67
     ledcAttachPin(PIN_OUT_PUMP, LEDC_CH_PUMP);
     ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
+    s_isPwmInitialized = true;
 #endif
 }
 
