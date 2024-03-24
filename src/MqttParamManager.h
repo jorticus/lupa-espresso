@@ -29,6 +29,12 @@ namespace MqttParam {
             prefix(prefix)
         { }
 
+        MqttParamManager(MqttParamManager const&) = delete;
+        void operator=(MqttParamManager const&) = delete;
+
+        //static MqttParamManager inst;
+        static MqttParamManager& getInstance();
+
         bool handleUpdate(String topic, String payload) {
             if (topic.startsWith(this->prefix)) {
                 auto prefix_len = strlen(this->prefix);
@@ -76,8 +82,6 @@ namespace MqttParam {
     private:
         
     };
-
-    extern MqttParamManager Manager;
 
 
     template <typename T>
@@ -128,7 +132,7 @@ namespace MqttParam {
 
         Parameter(const char* name, T defaultValue = {}) :
             MqttParamBase { name },
-            manager(Manager), // global instance
+            manager(MqttParamManager::getInstance()), // global instance
             _value(defaultValue), has_cb(false)
         {
             manager.addParam(*this);
@@ -137,7 +141,7 @@ namespace MqttParam {
 
         Parameter(const char* name, std::function<void(T)> update_cb) :
             MqttParamBase { name },
-            manager(Manager), // global instance
+            manager(MqttParamManager::getInstance()), // global instance
             _value{}, update_cb(update_cb), has_cb(true)
         {
             manager.addParam(*this);
@@ -145,7 +149,7 @@ namespace MqttParam {
 
         Parameter(const char* name, T defaultValue, std::function<void(T)> update_cb) :
             MqttParamBase { name },
-            manager(Manager), // global instance
+            manager(MqttParamManager::getInstance()), // global instance
             _value(defaultValue), update_cb(update_cb), has_cb(true)
         {
             manager.addParam(*this);

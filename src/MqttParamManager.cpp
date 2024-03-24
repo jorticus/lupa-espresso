@@ -5,15 +5,21 @@ extern PubSubClient client;
 
 namespace MqttParam {
 
-    MqttParamManager Manager(client, "lupa/config/");
+    MqttParamManager& MqttParamManager::getInstance() {
+        // Global singleton instance
+        static MqttParamManager inst { ::client, "lupa/config/" };
+        return inst;
+    }
 
     void publish() {
-        Manager.publishValues();
-        Manager.subscribe();
+        auto& manager = MqttParamManager::getInstance();
+        manager.publishValues();
+        manager.subscribe();
     }
 
     bool handleUpdate(String topic, String payload) {
-        return Manager.handleUpdate(topic, payload);
+        auto& manager = MqttParamManager::getInstance();
+        return manager.handleUpdate(topic, payload);
     }
 
 }
