@@ -166,4 +166,8 @@ void loop()
     
         UI::render();
     }
+    else {
+        IO::process();
+        UI::render();
+    }
 }
