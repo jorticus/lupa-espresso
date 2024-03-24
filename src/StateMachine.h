@@ -32,6 +32,7 @@ namespace State {
         LowWater,
         OverTemp,
         SensorFailure,
+        FailsafeRecovery,
         SoftwarePanic,
         NotHeating,
         FirmwareUpdateFailure

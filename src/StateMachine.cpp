@@ -46,9 +46,9 @@ MachineState getState() {
 
 void setFault(FaultState state, const char* msg) {
     if (msg != nullptr) {
-        Serial.printf("FAULT: %d\n", state);
-    } else {
         Serial.printf("FAULT: %d (%s)\n", state, msg);
+    } else {
+        Serial.printf("FAULT: %d\n", state);
     }
 
     uiState = MachineState::Fault;

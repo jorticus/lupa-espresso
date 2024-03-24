@@ -412,6 +412,9 @@ void renderRight() {
                 case FaultState::SoftwarePanic:
                     status_str = "FIRMWARE CRASH";
                     break;
+                case FaultState::FailsafeRecovery:
+                    status_str = "RECOVERY MODE";
+                    break;
                 case FaultState::FirmwareUpdateFailure:
                     status_str = "UPDATE FAILED";
                     break;

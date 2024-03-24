@@ -26,7 +26,7 @@
 #include "HomeAssistant.h"
 #include <esp_task_wdt.h>
 
-#define WDT_TIMEOUT 3
+const uint32_t WDT_TIMEOUT_SEC = 3;
 
 Stream& Debug = Serial;
 
@@ -89,28 +89,25 @@ bool handle_reset() {
     }
 }
 
-void setup() {
-    Serial.begin(9600);
+void initCritical() {
+    //
+    // Criticial initialization
+    // Only initialize subsystems required for setting up OTA update and UI feedback
+    //
 
-    // Disable watchdog during init to give system time to boot.
-    // The WiFi especially can take a significant amount of time to connect.
-    esp_task_wdt_init(10, false);
+    Serial.begin(9600);
 
     IO::initGpio();
     Display::initDisplay();
     Network::initWiFi();
     OTA::initOTA();
+}
 
-    // Enter fail-safe mode if we've encountered a firmware bug,
-    // before proceeding further. This allows us to recover via OTA.
-    if (handle_reset() || (digitalRead(PIN_IN_POWER_BTN) == HIGH)) {
-        return;
-    }
-#if defined(FAILSAFE_RECOVERY)
-    // Failsafe build
-    return;
-#endif
-    s_failsafe = false;
+void initSystem() {
+
+    //
+    // Non-critical initialization
+    //
 
     IO::initPwm();
     HomeAssistant::init();
@@ -130,12 +127,39 @@ void setup() {
     // If sensors could not be initialized, indicate fault
     if (State::uiState != State::MachineState::SensorTest && (!isSensorsInitialized))
     {
-        State::setFault(State::FaultState::SensorFailure, "FAIL_INIT");
+        State::setFault(State::FaultState::SensorFailure, "INIT FAILURE");
+    }
+}
+
+void setup() {
+    // Disable watchdog during init to give system time to boot.
+    // The WiFi especially can take a significant amount of time to connect.
+    esp_task_wdt_init(10, false);
+
+    initCritical();
+
+    // Enter fail-safe mode if we've encountered a firmware bug,
+    // before proceeding further. This allows us to recover via OTA.
+    if (handle_reset()) {
         return;
     }
+    // Holding power button on reset will also enter recovery mode.
+    if (digitalRead(PIN_IN_POWER_BTN) == HIGH) {
+        while (digitalRead(PIN_IN_POWER_BTN) == HIGH) continue;
+        State::setFault(State::FaultState::FailsafeRecovery);
+        return;
+    }
+#if defined(FAILSAFE_RECOVERY)
+    // Building with this flag set will always enter recovery mode.
+    State::setFault(State::FaultState::FailsafeRecovery);
+    return;
+#endif
+    s_failsafe = false;
+
+    initSystem();
 
     // Enable watchdog timer
-    esp_task_wdt_init(WDT_TIMEOUT, true);
+    esp_task_wdt_init(WDT_TIMEOUT_SEC, true);
     esp_task_wdt_add(NULL); //add current thread to WDT watch
 
     Serial.println("Done!");
