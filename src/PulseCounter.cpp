@@ -5,6 +5,9 @@
 #include <esp_intr_alloc.h>
 //#include <FunctionalInterrupt.h>
 
+// TODO: This has severe problems and triggers interrupt WDT
+//#define USE_PCNT_TIMER
+
 /// @brief If ticks/window falls below this threshold, slow mode is engaged.
 /// Slow mode measures the time between ticks.
 const unsigned long SLOW_TICK_COUNT_THRESHOLD = 450;
@@ -22,10 +25,11 @@ const unsigned long MIN_TICK_DELTA_USEC = 100;
 PulseCounter PulseCounter1 { PCNT_UNIT_0 };
 PulseCounter PulseCounter2 { PCNT_UNIT_1 };
 
+#ifdef USE_PCNT_TIMER
 // We share a single HW timer for all PCNT units
 hw_timer_t* PulseCounter::_timer = nullptr;
-
 portMUX_TYPE timerIsrMux = portMUX_INITIALIZER_UNLOCKED;
+#endif
 
 typedef void (*voidFuncPtr)(void);
 typedef void (*voidFuncPtrArg)(void*);
@@ -35,12 +39,14 @@ extern "C"
 	extern void __attachInterruptFunctionalArg(uint8_t pin, voidFuncPtrArg userFunc, void * arg, int intr_type, bool functional);
 }
 
+#ifdef USE_PCNT_TIMER
 void IRAM_ATTR PulseCounter::timerIsr() {
     portENTER_CRITICAL_ISR(&timerIsrMux);
     PulseCounter1.onTimer();
     PulseCounter2.onTimer();
     portEXIT_CRITICAL_ISR(&timerIsrMux);
 }
+#endif
 
 void IRAM_ATTR PulseCounter::pinChangeIsr(void* ctx) {
     reinterpret_cast<PulseCounter*>(ctx)->onPinChange();
@@ -54,7 +60,7 @@ void IRAM_ATTR PulseCounter::onTimer() {
     this->_isSampleReady = true;
 
     if (!_slowMode && (count < SLOW_TICK_COUNT_THRESHOLD)) {
-        Serial.printf("count %d below slow threshold\n", count);
+        //Serial.printf("count %d below slow threshold\n", count);
         setSlowMode(true);
     }
 
@@ -62,16 +68,18 @@ void IRAM_ATTR PulseCounter::onTimer() {
 }
 
 void IRAM_ATTR PulseCounter::onPinChange() {
+#ifdef USE_PCNT_TIMER
     int16_t count = 0;
     pcnt_get_counter_value(this->_unit, &count);
 
     if (_slowMode && (count > FAST_TICK_COUNT_THRESHOLD)) {
-        Serial.printf("count %d above fast threshold\n", count);
+        //Serial.printf("count %d above fast threshold\n", count);
         setSlowMode(false);
         return;
     }
 
     pcnt_counter_clear(this->_unit);
+#endif
 
     unsigned long t = esp_timer_get_time();
     unsigned long delta = t - _time;
@@ -120,6 +128,7 @@ bool PulseCounter::begin(int pin, int sampleWindowMs) {
 }
 
 void PulseCounter::initTimer(int sampleWindowMs) {
+#ifdef USE_PCNT_TIMER
     // Only init timer once
     // NOTE: Assumes sampleWindowMs is the same for all PCNT channels
     if (_timer == nullptr) {
@@ -134,6 +143,7 @@ void PulseCounter::initTimer(int sampleWindowMs) {
         timerAlarmWrite(_timer, sampleWindowMs*1000, true);
         timerAlarmEnable(_timer);
     }
+#endif
 }
 
 void PulseCounter::setSlowMode(bool slow) {
@@ -147,8 +157,10 @@ void PulseCounter::setSlowMode(bool slow) {
     else {
         _count = 0;
 
+#ifdef USE_PCNT_TIMER
         Serial.println("Fast mode");
         detachInterrupt(_interruptPin);
+#endif
     }
 
     this->_slowMode = slow;
