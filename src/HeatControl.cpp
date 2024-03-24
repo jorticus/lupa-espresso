@@ -58,7 +58,7 @@ void initControlLoop()
     pid.setSetpoint(Defaults::SetPoint);
     pid.setSampleTime(Defaults::UpdatePeriodMs);
     pid.setPlantOffset(Defaults::PlantOffset);
-    //pid.setRegulationRange(Defaults::RegulationRange);
+    pid.setRegulationRange(Defaults::RegulationRange);
 
     updatePidCoefficients();
 

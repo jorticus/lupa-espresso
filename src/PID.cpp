@@ -91,13 +91,12 @@ float fPID::calculateTick(float input) {
     float out_p = 0.0f;
 
     // Only start accumulating integral if close to the regulation range
-    if (error_abs < this->range) {
-    //if (en_integral) {
+    if (en_integral && (error_abs < this->range) && !is_out_negative) {
         // Calculate integral
         this->accum += (ki * error);
         clamp(accum, -out_max, out_max);
-        out_i = accum;
     }
+    out_i = accum;
 
     // Calculate derivative
     //if (last_input > 0.0f) {
@@ -130,6 +129,10 @@ float fPID::calculateTick(float input) {
         Serial.printf("PID: I:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
             input, error, out_p, out_i, out_d, static_offset, output);
     }
+
+    // If loop is trying to drive the system negative,
+    // stop accumulating integral as that will only fight against it.
+    is_out_negative = (output < out_min);
 
     // Clamp output
     clamp(output, out_min, out_max);

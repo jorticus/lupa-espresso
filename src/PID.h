@@ -19,7 +19,8 @@ public:
         out_min(0.0f), out_max(0.0f),
         range(infinityf()),
         en_integral(true),
-        en_debug(false)
+        en_debug(false),
+        is_out_negative(false)
     {
         reset();
     }
@@ -91,6 +92,7 @@ protected:
     float range;
     bool en_integral;
     bool en_debug;
+    bool is_out_negative;
 
     // Sample history for computing the derivative term
     ValueArray<float, 10> di_history;
