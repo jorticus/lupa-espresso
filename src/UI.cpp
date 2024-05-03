@@ -468,7 +468,7 @@ void renderRight() {
             break;
 
         case MachineState::FillTank:
-            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            ring_w = 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
             uiRenderStatusRing(gfx, "FILLING", TFT_YELLOW, ring_w);
             break;
 
@@ -481,7 +481,7 @@ void renderRight() {
         case MachineState::Sleep:
 
             // Pulse animation
-            ring_w += 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+            ring_w = 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
 
             uiRenderStatusRing(gfx, "ZzZz", TFT_DARKCYAN, ring_w);
             break;
