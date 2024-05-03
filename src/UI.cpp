@@ -72,10 +72,10 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
     switch (WiFi.status()) {
         case WL_NO_SSID_AVAIL:
             // Bad SSID or AP not present
-            err_msg = "Bad SSID";
+            err_msg = "No WiFi";
             break;
         case WL_CONNECT_FAILED:
-            err_msg = "Connect Failed";
+            err_msg = "WiFi Failed";
             break;
         case WL_IDLE_STATUS:
             err_msg = "Connecting";
