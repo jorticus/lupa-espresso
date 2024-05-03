@@ -17,10 +17,12 @@ namespace Defaults {
     static float SetPoint = CONFIG_BOILER_TEMPERATURE_C;
 
     static const float Kp = 10.0f;
-    static const float Ki = Kp / 13.0f; // Ki = Kp / Tn
-    static const float Kd = Kp * 5.0f; // Kd = Kp * Tv
+    static const float Ki = Kp / 20.0f; // Ki = Kp / Tn
+    static const float Kd = Kp * 1.0f; // Kd = Kp * Tv
 
-    static const float PlantOffset = 0.0f;
+    // Probably dependent on thermal losses to environment
+    // This was emperically determined with the cover off, ambient temperature ~20C
+    static const float PlantOffset = 10.0f;
 
     static const float MaxBoilerTemperature = CONFIG_MAX_BOILER_TEMPERATURE_C;
     static const float RegulationRange = CONFIG_BOILER_PID_RANGE_C;
