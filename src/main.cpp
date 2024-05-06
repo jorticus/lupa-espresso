@@ -156,7 +156,9 @@ void loop()
     esp_task_wdt_reset();
 
     Network::handle();
-    OTA::handle();
+    if (WiFi.status() == WL_CONNECTED) {
+        OTA::handle();
+    }
     DebugLogger::process();
     IO::process();
 
