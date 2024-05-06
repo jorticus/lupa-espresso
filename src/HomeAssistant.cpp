@@ -12,7 +12,14 @@
 #include "PressureControl.h"
 #include "MqttParamManager.h"
 #include "Debug.h"
+#include <lwip/dns.h>
 //#include "version.h"
+
+/// @brief MQTT connection timeout.
+/// Must be less than the watchdog timer!!
+const int NET_CONNECT_TIMEOUT_SEC = 2;
+
+const int NET_RECONNECT_INTERVAL_MS = 3000;
 
 // version.py
 extern const char* GEN_BUILD_VERSION;
@@ -133,6 +140,67 @@ void onConnect() {
     MqttParam::publish();
 }
 
+#include <esp_task_wdt.h>
+const uint32_t WDT_TIMEOUT_SEC = 4;
+
+static EventGroupHandle_t _arduino_event_group = NULL;
+
+static void wifi_dns_found_callback(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
+{
+    if (ipaddr) {
+        (*reinterpret_cast<IPAddress*>(callback_arg)) = ipaddr->u_addr.ip4.addr;
+    }
+    xEventGroupSetBits(_arduino_event_group, WIFI_DNS_DONE_BIT);
+}
+
+/// @brief Resolve a hostname by querying DNS, with timeout
+/// @details Reimplementation of WiFiGeneric::hostByName that lets you specify a timeout
+/// @param hostname Hostname to query
+/// @param result IP address of the hostname
+/// @param timeout_ms Timeout, in milliseconds
+/// @return True if DNS query was successful
+static bool hostByName(const char* hostname, IPAddress& result, uint32_t timeout_ms = 1000) {
+    if (!result.fromString(hostname)) {
+        ip_addr_t addr;
+        result = static_cast<uint32_t>(0);
+
+        if (!_arduino_event_group) {
+            _arduino_event_group = xEventGroupCreate();
+            xEventGroupSetBits(_arduino_event_group, WIFI_DNS_IDLE_BIT);
+        }
+
+        xEventGroupWaitBits(
+            _arduino_event_group, 
+            WIFI_DNS_IDLE_BIT,
+            pdFALSE,
+            pdTRUE,
+            timeout_ms / portTICK_PERIOD_MS);
+
+        xEventGroupClearBits(_arduino_event_group, WIFI_DNS_IDLE_BIT | WIFI_DNS_DONE_BIT);
+
+        err_t err = dns_gethostbyname(hostname, &addr, &wifi_dns_found_callback, &result);
+        if (err == ERR_OK && addr.u_addr.ip4.addr) {
+            result = addr.u_addr.ip4.addr;
+        } else if (err == ERR_INPROGRESS) {
+            xEventGroupWaitBits(
+                _arduino_event_group, 
+                WIFI_DNS_DONE_BIT,
+                pdFALSE,
+                pdTRUE,
+                timeout_ms / portTICK_PERIOD_MS );
+
+            xEventGroupClearBits(_arduino_event_group, WIFI_DNS_DONE_BIT);
+            xEventGroupSetBits(_arduino_event_group, WIFI_DNS_IDLE_BIT);
+
+            if ((uint32_t)result == 0) {
+                Debug.println("ERROR: DNS lookup timeout");
+            }
+        }
+    }
+
+    return (uint32_t)result != 0;
+}
+
 void HomeAssistant::process() {
     static unsigned long t_last = 0;
     static unsigned long t_last_connect = 0;
@@ -141,21 +209,45 @@ void HomeAssistant::process() {
     if (!isInitialized)
         return;
 
+    // TODO: We should really just stick this into a separate FreeRTOS task
+    // to ensure any blocks don't hold up the main loop.
     if (!client.connected()) {
         // Throttle reconnection attempts
-        if ((millis() - t_last_connect) > 1000) {
+        if ((millis() - t_last_connect) > NET_RECONNECT_INTERVAL_MS) {
             Debug.printf("Connecting to MQTT @ %s:%d\n", secrets::mqtt_server, secrets::mqtt_port);
 
-            client.setSocketTimeout(2); // Must be less than the watchdog timer
-            bool connected = HAComponentManager::connectClientWithAvailability(client, 
-                secrets::device_name, 
-                secrets::mqtt_username, 
-                secrets::mqtt_password);
+            // Perform DNS lookup, returning immediately if address was not found.
+            // This prevents blocking of the main loop if the server is not available.
+            // If the server is available, the next iteration of the loop should pick up the cached value immediately.
+            IPAddress host_addr;
+            if (hostByName(secrets::mqtt_server, host_addr, 0)) {
+                esp_task_wdt_reset();
 
-            if (connected) {
-                Debug.println("MQTT connected, publishing config...");
-                onConnect();
-                reportState();
+                // Connect WiFi client with timeout
+                // NOTE: This may halt the main loop for up to the timeout.
+                // For best results it would be beneficial to figure out how to do this asynchronously...
+                net.setTimeout(NET_CONNECT_TIMEOUT_SEC);
+                int r = net.connect(host_addr, secrets::mqtt_port);
+                if (r && net.connected()) {
+                    esp_task_wdt_reset();
+                    
+                    // The socket is now connected, try to establish an MQTT connection.
+                    // This may also introduce a delay for up to the timeout, but should only occur once on startup.
+                    // Note: The timeout below is for the MQTT connection itself, not the underlying socket. 
+                    client.setSocketTimeout(NET_CONNECT_TIMEOUT_SEC);
+                    bool connected = HAComponentManager::connectClientWithAvailability(client, 
+                        secrets::device_name, 
+                        secrets::mqtt_username, 
+                        secrets::mqtt_password);
+
+                    esp_task_wdt_reset();
+
+                    if (connected) {
+                        Debug.println("MQTT connected, publishing config...");
+                        onConnect();
+                        reportState();
+                    }
+                }
             }
             
             t_last_connect = millis();
