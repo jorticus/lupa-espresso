@@ -1,12 +1,13 @@
 #pragma once
 
 // Target boiler temperature for brewing (BoilerProfile::Brew)
-#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
+//#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
 //#define CONFIG_BOILER_TEMPERATURE_C (117.0f) // ~96C on grouphead
-//#define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
+#define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
+//#define CONFIG_BOILER_TEMPERATURE_C (125.0f) // ~94C on grouphead according to manual
 
 // Target boiler temperature for steaming (BoilerProfile::Steam)
-#define CONFIG_BOILER_STEAM_TEMPERATURE_C (120.0f)
+#define CONFIG_BOILER_STEAM_TEMPERATURE_C (125.0f)
 
 // Target boiler temperature in idle mode (BoilerProfile::Idle)
 #define CONFIG_BOILER_IDLE_TEMPERATURE_C (60.0f)
@@ -21,7 +22,11 @@
 // Maximum boiler temperature
 // Heat control loop will be disabled above this temperature.
 // Important: This does not replace the need for a hardware safety cutoff!
-#define CONFIG_MAX_BOILER_TEMPERATURE_C (125.0f)
+// The VBM Domobar HX has three safety cutoffs - 
+// A. the pressurestat will regulate the upper temperature
+// B. the over pressure valve on the boiler will release steam if pressure exceeds safe limits
+// C. the thermal fuse will blow if the boiler exterior exceeds safe limits
+#define CONFIG_MAX_BOILER_TEMPERATURE_C (130.0f)
 
 // Target preheat temperature
 // Defines when to exit the preheat phase and become ready.
@@ -35,7 +40,7 @@
 #define CONFIG_MAX_PRESSURE (12.0f)
 
 // Target brew pressure
-#define CONFIG_TARGET_BREW_PRESSURE (8.0f)
+#define CONFIG_TARGET_BREW_PRESSURE (9.0f)
 
 // Machine idle timeout
 //#define CONFIG_IDLE_TIMEOUT_MS (0) // Disabled
