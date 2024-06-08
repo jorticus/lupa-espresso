@@ -154,10 +154,12 @@ void endBrew()
 
     brewStats.total_volume = SensorSampler::getTotalFlowVolume();
 
+#if false
     // Switch into steaming mode (only if brew was longer than 10sec)
     if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
         HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
     }
+#endif
 }
 
 /// @brief Process brewing state
