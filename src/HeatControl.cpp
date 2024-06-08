@@ -203,15 +203,18 @@ void processControlLoop()
         }
         else {
 
-#if false
+#if true
             // Override PID when water is flowing
+            const float flow_perturbation_coeff = 1.0f;
             float offset = 0.0f;
             if (SensorSampler::isFlowRateValid()) {
                 auto flow = SensorSampler::getFlowRate();
                 if (flow > 1.0f) {
                     // Perturb the PID controller error to predict 
                     // the fact that the temperature will start to decrease soon.
-                    //offset = 20.0f;
+                    // Flow ranges from 0 to 15, let's lazily convert this to a DegC offset
+                    // so faster flows result in a larger offset...
+                    offset = flow * flow_perturbation_coeff;
                 }
             }
             pid.setPerturbationOffset(offset);
