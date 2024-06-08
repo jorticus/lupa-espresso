@@ -222,8 +222,9 @@ static void onTemperatureTimer(TimerHandle_t timer) {
                 s_isFlowing = false;
                 //value_flow_volume = 0.0f; // Reset volume
             }
-            else if (!s_isFlowing && (flow1_hz > 5.0f))
+            else if (!s_isFlowing && (flow1_hz > 5.0f)) {
                 s_isFlowing = true;
+            }
             
             // Conversion of Hz to normalized reading [0.0,1.0]
             // using a typical reading of 40Hz for maximum flow
@@ -236,8 +237,8 @@ static void onTemperatureTimer(TimerHandle_t timer) {
             // Calibration to mL/s
             // Note: coeff comes from calibrating the total volume, 
             // so we must also take into account the sample rate of 10Hz 
-            //const float ml_calib_coeff = 1.239f * 10.0f;
-            const float ml_calib_coeff = 0.986f * 10.0f;
+            // Note2: Not really sure why 0.5 works tbh, but the reading checks out.
+            const float ml_calib_coeff = 0.5f * 10.0f; 
             
             const float f1_coeff = hz_normalized_coeff * ml_calib_coeff;
             const float f2_coeff = hz_normalized_coeff * ml_calib_coeff * f1_to_f2_ratio;
@@ -249,21 +250,27 @@ static void onTemperatureTimer(TimerHandle_t timer) {
             // The flow rate out of the grouphead is the difference between
             // flow into the system (flow1) minus the flow out of the system (flow2),
             // though this does not account for filling of the preinfusion chamber.
-            //auto diff = (flow1_hz - flow2_hz);
+            auto diff = (flow1_hz - flow2_hz);
             //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
 
             // The combined flowrate is a value between 0.0 and 1.0
-            //filter_flowrate.add(diff);
-            filter_flowrate.add(flow1_hz);
-            filter2_flowrate.add(flow2_hz);
+            filter_flowrate.add(diff);
             if (filter_flowrate.isReady()) {
-                value_flow_rate = filter_flowrate.get() - filter2_flowrate.get();
+                value_flow_rate = filter_flowrate.get();
 
-                // Accumulate volume
-                // NOTE: Assumes 10Hz sample rate
-                if (value_flow_rate > 0.0f) {
-                    value_flow_volume += value_flow_rate * 0.1f;
-                }
+                // V[mL] = R[mL/s] * dt[s]
+                const float t_delta = (float)temperatureSampleRateMs * 0.001f;
+                value_flow_volume += (value_flow_rate * (float)t_delta);
+
+                // // Measure time delta since last reading
+                // static uint64_t t_flow_last = 0;
+                // uint64_t t_flow = millis();
+                // uint64_t t_delta = (t_flow - t_flow_last);
+                // t_flow_last = t_flow;
+                // if (t_delta > 1000) {
+                //     t_delta = t_delta; // Out of range
+                // }
+                //value_flow_volume += (value_flow_rate * (float)t_delta * 0.001f);
 
                 is_valid_flow_rate = true;
             }
