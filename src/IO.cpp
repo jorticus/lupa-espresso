@@ -14,6 +14,9 @@
 
 #define USE_WATERLEVEL
 
+extern volatile bool g_isWaterTankLow;
+extern volatile bool g_isTemperatureSensorIdle;
+
 // Reading is typically 0 when water is filled,
 // and ~500 when it needs filling
 const touch_value_t water_threshold_high = 20;
@@ -84,8 +87,10 @@ void initGpio() {
     // Ensure all CS pins are de-asserted.
     pinMode(TFT_CS_LEFT, OUTPUT);
     pinMode(TFT_CS_RIGHT, OUTPUT);
-    pinMode(MAX_CS, OUTPUT);
-    digitalWrite(MAX_CS, HIGH);
+    pinMode(MAX1_CS, OUTPUT);
+    pinMode(MAX2_CS, OUTPUT);
+    digitalWrite(MAX1_CS, HIGH);
+    digitalWrite(MAX2_CS, HIGH);
     digitalWrite(TFT_CS_LEFT, HIGH);
     digitalWrite(TFT_CS_RIGHT, HIGH);
 
@@ -285,18 +290,24 @@ void process() {
 }
 
 bool isWaterTankLow() {
-    static bool last_reading = false;
+    return g_isWaterTankLow;
+    // static bool last_reading = false;
 
-    // For reasons I don't understand, this signal being high
-    // causes spurious readings of the water low GPIO.
-    // As a workaround, only sample when it is low (sensor ready).
-    // This is not ideal since if this remains high for some reason,
-    // we will never know if the tank is empty or not.
-    if (digitalRead(MAX_RDY) == LOW) {
-        last_reading = (digitalRead(PIN_IN_WATER_LOW) == LOW);
-    }
+    // // // For reasons I don't understand, this signal being high
+    // // // causes spurious readings of the water low GPIO.
+    // // // As a workaround, only sample when it is low (sensor ready).
+    // // // This is not ideal since if this remains high for some reason,
+    // // // we will never know if the tank is empty or not.
+    // // if (digitalRead(MAX_RDY) == LOW) {
+    // //     last_reading = (digitalRead(PIN_IN_WATER_LOW) == LOW);
+    // // }
+
+    // if (g_isTemperatureSensorIdle) {
+    //     last_reading = (digitalRead(PIN_IN_WATER_LOW) == LOW);
+    //     g_isTemperatureSensorIdle = false;
+    // }
     
-    return last_reading;
+    // return last_reading;
 }
 
 bool isBoilerTankLow() {
