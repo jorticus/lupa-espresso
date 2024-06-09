@@ -24,6 +24,10 @@ namespace SensorSampler {
     /// @return Temperature, in degC
     float getTemperature();
 
+    /// @brief Current boiler temperature
+    /// @return Temperature, in degC
+    float getTemperature2();
+
     /// @brief Whether temperature is at target and has stabilized
     bool isTemperatureStabilized();
 
@@ -66,6 +70,9 @@ namespace SensorSampler {
     
     /// @brief Temperature readings
     extern ValueArray<float, numSamples> temperatureSamples;
+
+    /// @brief Temperature readings
+    extern ValueArray<float, numSamples> temperatureSamples2;
 
     /// @brief Pressure readings
     extern ValueArray<float, numSamples> pressureSamples;

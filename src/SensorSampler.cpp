@@ -16,17 +16,23 @@
 
 #define PREHEAT_TEMPERATURE_C (CONFIG_BOILER_TEMPERATURE_C - 5.0f)
 
-extern Adafruit_MAX31865   rtd;
+extern Adafruit_MAX31865   rtd1;
+extern Adafruit_MAX31865   rtd2;
 extern PressureTransducer  pressure;
+
+volatile bool g_isWaterTankLow = false;
+volatile bool g_isTemperatureSensorIdle = true;
 
 namespace SensorSampler {
 
 // Circular buffers for storing historical sensor readings.
 // These are used to render graphs in the UI
 ValueArray<float, numSamples> temperatureSamples;
+ValueArray<float, numSamples> temperatureSamples2;
 ValueArray<float, numSamples> pressureSamples;
 ValueArray<float, numSamples> flowSamples;
 
+static int waterTankDebounce = 0;
 
 static bool isRtdAvailable = false;
 static bool isPressureAvailable = false;
@@ -99,18 +105,21 @@ static const float filter_21tap_5hz[] = {
 
 // Automatic FIR filters of type FirFilter<N_TAPS> { taps }
 static auto filter_pressure     = MAKE_FIR_FILTER(filter_21tap_5hz);  // 100Hz sample rate
-static auto filter_temperature  = MAKE_FIR_FILTER(filter_21tap_10hz);   
+static auto filter_temperature_1  = MAKE_FIR_FILTER(filter_21tap_10hz);   
+static auto filter_temperature_2  = MAKE_FIR_FILTER(filter_21tap_10hz);   
 
 static auto filter_flowrate     = MAKE_FIR_FILTER(filter_11tap_1hz);    // 10Hz sample
 static auto filter2_flowrate     = MAKE_FIR_FILTER(filter_11tap_1hz);
 
 static float value_pressure = 0.0f;
-static float value_temperature = 0.0f;
+static float value_temperature_1 = 0.0f;
+static float value_temperature_2 = 0.0f;
 static float value_flow_rate = 0.0f;
 static float value_flow_volume = 0.0f;
 
 static bool is_valid_pressure = false;
-static bool is_valid_temperature = false;
+static bool is_valid_temperature_1 = false;
+static bool is_valid_temperature_2 = false;
 static bool is_valid_flow_rate = false;
 
 static const unsigned long sampleRateMs = 10;
@@ -167,7 +176,8 @@ static void onSensorTimer(TimerHandle_t timer) {
 }
 
 static float calculateRtdTemperature(float rtd_raw) {
-    float t = rtd.calculateTemperature(rtd_raw, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
+    // Doesn't matter if we use RTD1 or RTD2 here, calculation is the same.
+    float t = rtd1.calculateTemperature(rtd_raw, RTD_NOMINAL_RESISTANCE, RTD_REFERENCE_RESISTANCE);
     
     // Correction factor for boiler RTD using real-life measurements
     return (t * 1.024f) - 1.38f;
@@ -181,34 +191,74 @@ static void onTemperatureTimer(TimerHandle_t timer) {
 
     // MAX chip is configured for an automatic 60Hz sample rate.
     // Since we're only sampling at ~10Hz, we should always have a sample available.
-    if (rtd.isSampleReady()) {
-        auto raw = rtd.readSample();
+    if (rtd1.isSampleReady()) {
+        auto raw = rtd1.readSample();
         if (raw > 0 && raw < 0x7000) {//0x7FFF) {
-            filter_temperature.add(raw);
+            filter_temperature_1.add(raw);
 
             // auto unfiltered_temp = calculateRtdTemperature(raw);
             // if (unfiltered_temp > 200.0f) {
             //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
             // }
 
-            if (filter_temperature.isReady()) {
-                float raw_filtered = filter_temperature.get();
+            if (filter_temperature_1.isReady()) {
+                float raw_filtered = filter_temperature_1.get();
                 auto temperature = calculateRtdTemperature(raw_filtered);
                 if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
-
-                    value_temperature = temperature;
-                    is_valid_temperature = true;
+                    value_temperature_1 = temperature;
+                    is_valid_temperature_1 = true;
                 }
                 else {
-                    Debug.printf("INVALID RTD T: %.2f (0x%x)\n", temperature, raw_filtered);
-                    is_valid_temperature = false;
+                    Debug.printf("INVALID RTD1 T: %.2f (0x%x)\n", temperature, raw_filtered);
+                    is_valid_temperature_1 = false;
                 }
             }
         } else {
-            Debug.printf("INVALID RTD RAW: 0x%x\n", raw);
+            Debug.printf("INVALID RTD1 RAW: 0x%x\n", raw);
         }
     }
 
+    // This GPIO (34) is cursed - it MUST be read here, due to an inexplicable affect from the MAX RTD chip.
+    // Before RTD1, it always reads open. After RTD2, it always reads closed.
+    // Outside of this loop, it will be unstable.
+    // Even here, it must be debounced as it will occasinally flip states.
+    if (digitalRead(PIN_IN_WATER_LOW) == LOW) {
+        if (waterTankDebounce < 10) waterTankDebounce++;
+        else g_isWaterTankLow = true;
+    }
+    else {
+        if (waterTankDebounce > 0) waterTankDebounce--;
+        else g_isWaterTankLow = false;
+    }
+
+    if (rtd2.isSampleReady()) {
+        auto raw = rtd2.readSample();
+        if (raw > 0 && raw < 0x7000) {//0x7FFF) {
+            filter_temperature_2.add(raw);
+
+            // auto unfiltered_temp = calculateRtdTemperature(raw);
+            // if (unfiltered_temp > 200.0f) {
+            //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+            // }
+
+            if (filter_temperature_2.isReady()) {
+                float raw_filtered = filter_temperature_2.get();
+                auto temperature = calculateRtdTemperature(raw_filtered);
+                if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+                    value_temperature_2 = temperature;
+                    is_valid_temperature_2 = true;
+                }
+                else {
+                    Debug.printf("INVALID RTD2 T: %.2f (0x%x)\n", temperature, raw_filtered);
+                    is_valid_temperature_2 = false;
+                }
+            }
+        } else {
+            Debug.printf("INVALID RTD2 RAW: 0x%x\n", raw);
+        }
+    }
+
+    g_isTemperatureSensorIdle = true;
     
     // The pulse counter should always have a valid sample, though it runs with its own timer
     // and may not be aligned to our sample rate.
@@ -293,8 +343,11 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     // 1 sec per tick
     if (divider10++ == 10) {
         divider10 = 0;
-        if (filter_temperature.isReady()) {
-            temperatureSamples.add(value_temperature);
+        if (filter_temperature_1.isReady()) {
+            temperatureSamples.add(value_temperature_1);
+        }
+        if (filter_temperature_2.isReady()) {
+            temperatureSamples2.add(value_temperature_2);
         }
     }
 
@@ -332,56 +385,65 @@ bool initTemperature() {
     Debug.println("Initialize MAX31865");
 
     pinMode(MAX_RDY, INPUT);
+    // pinMode(MAX1_CS, OUTPUT);
+    // pinMode(MAX2_CS, OUTPUT);
 
-    rtd.begin(MAX31865_3WIRE);
-    rtd.enableBias(true);
-    rtd.enable50Hz(true);
-    
-    //Debug.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
-    //Debug.println("ERROR: No response from MAX");
-
-    rtd.readRTD();
-    auto fault = rtd.readFault();
-    if (fault) {
-        Debug.print("Fault 0x"); Debug.println(fault, HEX);
-        if (fault & MAX31865_FAULT_HIGHTHRESH) {
-            Debug.println("RTD High Threshold"); 
-        }
-        if (fault & MAX31865_FAULT_LOWTHRESH) {
-            Debug.println("RTD Low Threshold"); 
-        }
-        if (fault & MAX31865_FAULT_REFINLOW) {
-            Debug.println("REFIN- > 0.85 x Bias"); 
-        }
-        if (fault & MAX31865_FAULT_REFINHIGH) {
-            Debug.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
-        }
-        if (fault & MAX31865_FAULT_RTDINLOW) {
-            Debug.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
-        }
-        if (fault & MAX31865_FAULT_OVUV) {
-            Debug.println("Under/Over voltage"); 
-        }
-    }
-    else {
-        rtd.autoConvert(true);
-
-        // Wait for a sample to come in
-        auto t1 = millis();
-        while (((millis() - t1) < 1000) && (!rtd.isSampleReady()))
-            continue;
+    auto entries = { std::reference_wrapper<Adafruit_MAX31865>(rtd1), std::reference_wrapper<Adafruit_MAX31865>(rtd2) };
+    for (Adafruit_MAX31865& rtd : entries) {
+        rtd.begin(MAX31865_3WIRE);
+        rtd.enableBias(true);
+        rtd.enable50Hz(true);
         
-        if (!rtd.isSampleReady()) {
-            Debug.println("Error: No sample");
+        //Debug.println(rtd.readRegister8(MAX31865_CONFIG_REG), HEX);
+        //Debug.println("ERROR: No response from MAX");
+
+        rtd.readRTD();
+        auto fault = rtd.readFault();
+        if (fault) {
+            Debug.print("Fault 0x"); Debug.println(fault, HEX);
+            if (fault & MAX31865_FAULT_HIGHTHRESH) {
+                Debug.println("RTD High Threshold"); 
+            }
+            if (fault & MAX31865_FAULT_LOWTHRESH) {
+                Debug.println("RTD Low Threshold"); 
+            }
+            if (fault & MAX31865_FAULT_REFINLOW) {
+                Debug.println("REFIN- > 0.85 x Bias"); 
+            }
+            if (fault & MAX31865_FAULT_REFINHIGH) {
+                Debug.println("REFIN- < 0.85 x Bias (FORCE- open)"); 
+            }
+            if (fault & MAX31865_FAULT_RTDINLOW) {
+                // Likely means there is a short to ground
+                Debug.println("RTDIN- < 0.85 x Bias (FORCE- open)"); 
+            }
+            if (fault & MAX31865_FAULT_OVUV) {
+                Debug.println("Under/Over voltage"); 
+            }
+            return false;
         }
-        else if (rtd.readSample() == 0) {
-            Debug.println("Error: Sample is zero");
+        else {
+            rtd.autoConvert(true);
+
+            // Wait for a sample to come in
+            auto t1 = millis();
+            while (((millis() - t1) < 1000) && (!rtd.isSampleReady()))
+                continue;
+            
+            if (!rtd.isSampleReady()) {
+                Debug.println("Error: No sample");
+            }
+            else if (rtd.readSample() == 0) {
+                Debug.println("Error: Sample is zero");
+            }
         }
 
-        return true;
     }
 
-    return false;
+    digitalWrite(MAX1_CS, HIGH);
+    digitalWrite(MAX2_CS, HIGH);
+
+    return true;
 }
 
 bool initFlow() {
@@ -422,7 +484,8 @@ void start() {
     xTimerStart(timer2, 0);
     xTimerStart(timer1, 0);
 
-    rtd.autoConvert(true);
+    rtd1.autoConvert(true);
+    rtd2.autoConvert(true);
     pressure.startSample();
     PulseCounter1.begin(FLOW1_PULSE_PIN, sampleRateMs);
     PulseCounter2.begin(FLOW2_PULSE_PIN, sampleRateMs);
@@ -433,7 +496,8 @@ void stop() {
     xTimerStop(timer1, 0);
     xTimerStop(timer2, 0);
 
-    rtd.autoConvert(false);
+    rtd1.autoConvert(false);
+    rtd2.autoConvert(false);
 }
 
 void process() {
@@ -441,19 +505,23 @@ void process() {
 }
 
 float getTemperature() {
-    return value_temperature;
+    return value_temperature_1;
+}
+
+float getTemperature2() {
+    return value_temperature_2;
 }
 
 bool isTemperatureStabilized() {
-    return (value_temperature >= PREHEAT_TEMPERATURE_C);
+    return (value_temperature_1 >= PREHEAT_TEMPERATURE_C);
 }
 
 float getEstimatedGroupheadTemperature() {
-    if (!is_valid_temperature) {
+    if (!is_valid_temperature_1) {
         return 0.0f;
     }
     
-    float t = value_temperature;
+    float t = value_temperature_1;
     if (t < 90.0f) {
         // Correction doesn't work in this range, 
         // switch to approximate linear correction
@@ -487,7 +555,7 @@ void resetFlowCounter() {
 }
 
 bool isTemperatureValid() {
-    return is_valid_temperature;
+    return is_valid_temperature_1;
 }
 
 bool isPressureValid() {

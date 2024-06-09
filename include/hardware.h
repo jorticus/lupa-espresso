@@ -81,8 +81,10 @@
 // - MAX31865 RTD
 //
 
-#define MAX_CS      25
 #define MAX_RDY     35
+
+#define MAX1_CS     25
+#define MAX2_CS     0  // Shared with BOOT pin (PU)
 
 #define RTD_NOMINAL_RESISTANCE (100)
 #define RTD_REFERENCE_RESISTANCE (430)

@@ -30,7 +30,8 @@
 
 const uint32_t WDT_TIMEOUT_SEC = 3;
 
-Adafruit_MAX31865   rtd(MAX_CS, &Display::getSPIInstance());
+Adafruit_MAX31865   rtd1(MAX1_CS, &Display::getSPIInstance());
+Adafruit_MAX31865   rtd2(MAX2_CS, &Display::getSPIInstance());
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
 static bool s_failsafe = true;
@@ -108,7 +109,7 @@ void initSystem() {
     // Power-on state:
     //State::setState(State::MachineState::Preheat);
     State::setState(State::MachineState::Off);
-    //State::setState(MachineState::SensorTest);
+    //State::setState(State::MachineState::SensorTest);
 
     // If sensors could not be initialized, indicate fault
     if (State::uiState != State::MachineState::SensorTest && (!isSensorsInitialized))

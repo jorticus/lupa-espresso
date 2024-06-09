@@ -63,7 +63,8 @@ void tftClearCanvas() {
 }
 
 void tftUpdateDisplay() {
-    digitalWrite(MAX_CS, HIGH);
+    digitalWrite(MAX1_CS, HIGH);
+    digitalWrite(MAX2_CS, HIGH);
 
 #ifdef ENABLE_DISPLAY
     digitalWrite(TFT_CS_RIGHT, LOW);

@@ -77,9 +77,9 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
         case WL_CONNECT_FAILED:
             err_msg = "WiFi Failed";
             break;
-        case WL_IDLE_STATUS:
-            err_msg = "Connecting";
-            break;
+        // case WL_IDLE_STATUS:
+        //     err_msg = "Connecting";
+        //     break;
         case WL_CONNECTION_LOST:
             err_msg = "Connection Lost";
             break;
@@ -183,7 +183,7 @@ void uiRenderFlowGauge(GfxCanvas& gfx, bool postbrew = false) {
     float value_norm = (flow - min_flow) / (max_flow - min_flow);
     uiRenderGauge(gfx, value_norm, COLOUR_FLOW_RATE, 15);
 
-    //uiRenderLabelFormattedCentered(gfx, -60, TFT_RED, "%.3f", flow);
+    uiRenderLabelFormattedCentered(gfx, -60, TFT_RED, "%.3f", flow);
 
     if (postbrew) {
         uiRenderLabelFormattedCentered(gfx, 90, TFT_WHITE, "%.0f mL", brewStats.total_volume);
@@ -200,6 +200,7 @@ void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
     float min_value = getTemperatureMinRange();
     float max_value = getTemperatureMaxRange();
     uiRenderGraph(gfx, temperatureSamples, min_value, max_value, color);
+    uiRenderGraph(gfx, temperatureSamples2, min_value, max_value, TFT_SILVER);
 }
 
 void uiRenderBrewGraph(GfxCanvas& gfx, bool freeze = false) {
@@ -329,6 +330,7 @@ void renderLeft() {
     uiRenderTemperatureGraph(gfx);
 
     float t_boiler = SensorSampler::getTemperature();
+    float t2 = SensorSampler::getTemperature2();
 
     // Render current temperature
     bool is_t_valid = SensorSampler::isTemperatureValid() && (t_boiler > 1.0f);
@@ -338,16 +340,24 @@ void renderLeft() {
         (is_t_valid ? "%.2f C" : "- C"), 
         t_boiler);
 
-    // Estimated grouphead temperature
-    bool is_est_valid = SensorSampler::isTemperatureValid() && (t_boiler > 100.0f);
-    if (is_est_valid) {
-        float t_estimated = SensorSampler::getEstimatedGroupheadTemperature();
-        uiRenderLabelFormattedCentered(gfx,
-            (TFT_HEIGHT/2 - 30),
-            TFT_WHITE,
-            "%.0f C",
-            t_estimated);
-    }
+    // // Estimated grouphead temperature
+    // bool is_est_valid = SensorSampler::isTemperatureValid() && (t_boiler > 100.0f);
+    // if (is_est_valid) {
+    //     float t_estimated = SensorSampler::getEstimatedGroupheadTemperature();
+    //     uiRenderLabelFormattedCentered(gfx,
+    //         (TFT_HEIGHT/2 - 30),
+    //         TFT_WHITE,
+    //         "%.0f C",
+    //         t_estimated);
+    // }
+
+    bool is_t2_valid = (t2 > 1.0f);
+    uiRenderLabelFormattedCentered(gfx,
+        (TFT_HEIGHT/2 - 30),
+        TFT_SILVER,
+        (is_t2_valid ? "%.2f C" : "- C"),
+        t2);
+
 
     uiRenderTemperatureGauge(gfx);
     uiRenderHeaterPowerGauge(gfx);
