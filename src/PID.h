@@ -16,7 +16,7 @@ public:
         p_offset(0.0f), static_offset(0.0f),
         last_input(0.0f),
         accum(0.0f),
-        out_min(0.0f), out_max(0.0f),
+        out_min(-infinityf()), out_max(infinityf()),
         range(infinityf()),
         en_integral(true),
         en_debug(false),

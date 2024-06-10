@@ -19,6 +19,7 @@ namespace Defaults {
     static const float Kp = 10.0f;
     static const float Ki = Kp / 20.0f; // Ki = Kp / Tn
     static const float Kd = Kp * 1.0f; // Kd = Kp * Tv
+    static const float Kd2 = Kp * 1.0f;
 
     // Probably dependent on thermal losses to environment
     // This was emperically determined with the cover off, ambient temperature ~20C
@@ -37,6 +38,7 @@ namespace Defaults {
 // and also let us detect whether steam is being used.
 
 static fPID pid;
+static fPID pid2;
 
 const float MAX_BOILER_TEMPERATURE = CONFIG_MAX_BOILER_TEMPERATURE_C;
 
@@ -50,6 +52,7 @@ void updatePidCoefficients();
 MqttParam::Parameter<float> param_kp("pid/boiler/kp", Defaults::Kp, [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_ki("pid/boiler/ki", Defaults::Ki, [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_kd("pid/boiler/kd", Defaults::Kd, [] (float val) { updatePidCoefficients(); });
+MqttParam::Parameter<float> param_kd2("pid/boiler/kd2", Defaults::Kd2, [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_po("pid/boiler/po", Defaults::PlantOffset, [] (float val) { updatePidCoefficients(); });
 
 MqttParam::Parameter<float> param_boilerTemp("brew/boiler_temp", CONFIG_BOILER_TEMPERATURE_C,       [] (float val) { setProfile(operating_profile); });
@@ -65,6 +68,12 @@ void initControlLoop()
     pid.setPlantOffset(Defaults::PlantOffset);
     pid.setRegulationRange(Defaults::RegulationRange);
 
+    // D term only, to account for main boiler transients
+    pid2.reset();
+    //pid2.setOutputLimits(-20.0f, 20.0f);
+    pid2.setParameters(0.0f, 0.0f, Defaults::Kd2);
+    pid2.setSampleTime(Defaults::UpdatePeriodMs);
+
     updatePidCoefficients();
 
     // TODO: Prevent integral from going below 0, as it can
@@ -79,16 +88,21 @@ void updatePidCoefficients() {
     float kp = param_kp.value();
     float ki = param_ki.value();
     float kd = param_kd.value();
+    float kd2 = param_kd2.value();
     float po = param_po.value();
 
     pid.setParameters(kp, ki, kd);
     pid.setPlantOffset(po);
     pid.reset();
 
-    Debug.printf("Boiler PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
+    pid2.setParameters(0.0f, 0.0f, kd2);
+    pid2.reset();
+
+    Debug.printf("Boiler PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tKd2: %.4f\n\tOf: %.4f\n", 
         pid.getKp(),
         pid.getKi(),
         pid.getKd(),
+        pid2.getKd(),
         po
     );
 }
@@ -182,12 +196,14 @@ void processControlLoop()
         IO::setHeatPower(0.0f);
     }
     else {
-        float pid_input = SensorSampler::getTemperature();
+        float pid_input = SensorSampler::getTemperature(); // HX
+        float pid_input_2 = SensorSampler::getTemperature2(); // Boiler
 
         if (pid_input > Defaults::MaxBoilerTemperature) {
             //IO::setHeat(false);
             IO::setHeatPower(0.0f);
             pid.reset();
+            pid2.reset();
             return;
         }
 
@@ -199,11 +215,12 @@ void processControlLoop()
             //IO::setHeat(true);
             IO::setHeatPower(1.0f);
             pid.reset();
+            pid2.reset();
             return;
         }
         else {
 
-#if true
+#if false
             // Override PID when water is flowing
             const float flow_perturbation_coeff = 1.0f;
             float offset = 0.0f;
@@ -229,7 +246,9 @@ void processControlLoop()
                     publishTuningData(pid_input, pid_output);
                 }
                 else {
-                    pid_output = pid.calculateTick(pid_input);
+                    float dterm = pid2.calculateTick(pid_input_2);
+
+                    pid_output = pid.calculateTick(pid_input) + dterm;
                 }
 
                 //Debug.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);
@@ -248,6 +267,7 @@ void setProfile(BoilerProfile mode) {
         case BoilerProfile::Off:
             Debug.println("Off");
             pid.reset();
+            pid2.reset();
             break;
         case BoilerProfile::Brew:
             Debug.println("Brew");
@@ -272,6 +292,10 @@ void setProfile(BoilerProfile mode) {
 
 BoilerProfile getProfile() {
     return operating_profile;
+}
+
+float getSetpoint() {
+    return pid.getSetpoint();
 }
 
 }
