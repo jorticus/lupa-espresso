@@ -63,6 +63,16 @@ float fPID::getKi() {
     return this->ki;
 }
 
+float fPID::getP() {
+    return this->out_p;
+}
+float fPID::getI() {
+    return this->out_i;
+}
+float fPID::getD() {
+    return this->out_d;
+}
+
 void fPID::setSetpoint(float setpoint) {
     this->setpoint = setpoint;
 }
@@ -87,9 +97,9 @@ float fPID::calculateTick(float input) {
     float error = (setpoint - input);
     float error_abs = (error > 0.0f) ? error : -error;
     float output = 0.0f;
-    float out_d = 0.0f;
-    float out_i = 0.0f;
-    float out_p = 0.0f;
+    // float out_d = 0.0f;
+    // float out_i = 0.0f;
+    // float out_p = 0.0f;
 
     // Only start accumulating integral if close to the regulation range
     if (en_integral && (error_abs < this->range) && !is_out_negative) {

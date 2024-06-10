@@ -58,6 +58,10 @@ public:
     float getKd();
     float getKi();
 
+    float getP();
+    float getI();
+    float getD();
+
     /// @brief Target setpoint for the control loop
     /// @details The PID loop will try to bring the system as close to this value as possible. It should be in the same units as the input reading (not the output).
     /// @param setpoint 
@@ -84,6 +88,7 @@ protected:
     unsigned long last_t_kd;
     unsigned long sample_time;
     float kp, ki, kd;
+    float out_p, out_i, out_d;
     float setpoint;
     float p_offset, static_offset;
     float last_input;

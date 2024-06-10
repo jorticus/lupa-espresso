@@ -22,4 +22,12 @@ namespace HeatControl {
 
     /// @brief Get the current boiler temperature profile
     BoilerProfile getProfile();
+
+    float getSetpoint();
+
+    static const int numSamples = 300;
+
+    extern ValueArray<float, numSamples> pid_i;
+    extern ValueArray<float, numSamples> pid_d;
+    extern ValueArray<float, numSamples> pid_d2;
 }

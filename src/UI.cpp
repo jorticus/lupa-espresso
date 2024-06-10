@@ -199,8 +199,17 @@ void uiRenderFlowGauge(GfxCanvas& gfx, bool postbrew = false) {
 void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
     float min_value = getTemperatureMinRange();
     float max_value = getTemperatureMaxRange();
-    uiRenderGraph(gfx, temperatureSamples, min_value, max_value, color);
+
+    // DEBUG: Print PID outputs
+    const float pid_max = 50.0f;
+    const float pid_min = -50.0f;
+    uiRenderGraph(gfx, HeatControl::pid_i,  pid_min, pid_max, TFT_PURPLE);
+    uiRenderGraph(gfx, HeatControl::pid_d,  pid_min, pid_max, TFT_YELLOW);
+    uiRenderGraph(gfx, HeatControl::pid_d2, pid_min, pid_max, TFT_RED);
+
+    uiRenderGraph(gfx, temperatureSamples,  min_value, max_value, color, HeatControl::getSetpoint());
     uiRenderGraph(gfx, temperatureSamples2, min_value, max_value, TFT_SILVER);
+
 }
 
 void uiRenderBrewGraph(GfxCanvas& gfx, bool freeze = false) {

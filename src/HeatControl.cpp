@@ -58,6 +58,11 @@ MqttParam::Parameter<float> param_po("pid/boiler/po", Defaults::PlantOffset, [] 
 MqttParam::Parameter<float> param_boilerTemp("brew/boiler_temp", CONFIG_BOILER_TEMPERATURE_C,       [] (float val) { setProfile(operating_profile); });
 MqttParam::Parameter<float> param_steamTemp("brew/steam_temp",   CONFIG_BOILER_STEAM_TEMPERATURE_C, [] (float val) { setProfile(operating_profile);  });
 
+// DEBUG
+ValueArray<float, numSamples> pid_i;
+ValueArray<float, numSamples> pid_d;
+ValueArray<float, numSamples> pid_d2;
+
 void initControlLoop()
 {
     pid.reset();
@@ -249,6 +254,11 @@ void processControlLoop()
                     float dterm = pid2.calculateTick(pid_input_2);
 
                     pid_output = pid.calculateTick(pid_input) + dterm;
+
+                    // For debug:
+                    pid_i.add(pid.getI());
+                    pid_d.add(pid.getD());
+                    pid_d2.add(pid2.getD());
                 }
 
                 //Debug.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid_setpoint, pid_output);

@@ -43,7 +43,7 @@ void uiRenderGauge(GfxCanvas& gfx, float value_norm, uint32_t fg_color, int32_t 
 /// @param max_value Y axis maximum
 /// @param color Color of the line
 template <typename T, size_t N>
-static void uiRenderGraph(GfxCanvas& gfx, ValueArray<T,N>& samples, float min_value, float max_value, uint16_t color = TFT_WHITE) {
+static void uiRenderGraph(GfxCanvas& gfx, ValueArray<T,N>& samples, float min_value, float max_value, uint16_t color = TFT_WHITE, float ref_value = INFINITY) {
 
     int32_t margin = 40;
     int32_t x = margin;
@@ -81,6 +81,19 @@ static void uiRenderGraph(GfxCanvas& gfx, ValueArray<T,N>& samples, float min_va
         last_x = x;
         last_y = yy;
         x++;
+    }
+
+    // Dashed horizontal line to mark target value
+    w = TFT_WIDTH - margin;
+    if (ref_value >= min_value && ref_value <= max_value) {
+        int32_t offset = (((ref_value - min_value) / (max_value - min_value)) * h * 2);
+        int32_t yy = y + h - offset;
+        int32_t x = margin;
+        while (x < w) {
+            //gfx.drawFastHLine(x, yy, 8, TFT_DARKGREY);
+            gfx.drawPixel(x, yy, TFT_DARKGREY);
+            x += 3;
+        }
     }
 }
 
