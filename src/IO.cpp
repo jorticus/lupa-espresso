@@ -330,9 +330,9 @@ void setHeatPower(float duty) {
     s_heaterPower = duty;
 
     // Immediately turn off boiler, don't wait for next PWM cycle
-    if (duty <= 0.0f) {
-        setHeat(false);
-    }
+    // if (duty <= 0.0f) {
+    //     setHeat(false);
+    // }
 }
 
 void setHeat(bool en) {
