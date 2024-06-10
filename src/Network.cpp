@@ -10,6 +10,8 @@ using namespace Display;
 namespace Network
 {
 
+static int s_reconnectAttempts = 0;
+
 enum class WifiConnectionStatus {
     Connecting,
     Failure,
@@ -72,20 +74,49 @@ static void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (w
     tftUpdateDisplay();
 }
 
+#include "esp_wifi.h"
+
 static void startWiFi()
 {
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleep(WIFI_PS_NONE);
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    // // Erase prior configuration
+    WiFi.disconnect(true, true);
+    // WiFi.mode(WIFI_OFF);
+
+    // // Store config in RAM instead of committing to flash
+    // esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+    // // Workaround to disable persistent config
+    //wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    // cfg.nvs_enable = 0;
+
+    //WiFi.persistent(true);
+    WiFi.persistent(false); // Store config in RAM
+    
     WiFi.setHostname(secrets::device_name);
-    WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+    WiFi.setAutoReconnect(true);
+
+    // Enable WiFi Station Mode
+    if (!WiFi.mode(WIFI_STA)) {
+        Debug.println("ERROR: Could not enable WiFi STA");
+    }
+
+    // Disable power saving to keep connection stable
+    WiFi.setSleep(WIFI_PS_NONE);
+
+    //WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
+    
+    auto status = WiFi.begin(secrets::wifi_ssid, secrets::wifi_pw);
+    if (status == WL_CONNECT_FAILED) {
+        Debug.println("ERROR: Could not start WiFi");
+        //WiFi.reconnect();
+    }
 }
 
 void initWiFi()
 {
     wl_status_t result;
 
-    WiFi.persistent(false);
+    //WiFi.persistent(false);
 
 #if CONFIG_WAIT_FOR_WIFI
     while (WiFi.status() != WL_CONNECTED) {
@@ -144,6 +175,7 @@ void handle() {
         Debug.println(wifi_status_str[(int)status]);
     }
 
+#if true
     if (!(WiFi.getMode() & WIFI_MODE_STA) || 
         (status == WL_NO_SSID_AVAIL) || 
         (status == WL_CONNECT_FAILED) || 
@@ -153,20 +185,33 @@ void handle() {
         // Throttle reconnection attempts
         if ((millis() - t_last) > reconnect_interval_ms) {
             t_last = millis();
-            //WiFi.mode(WIFI_OFF);
-            WiFi.disconnect(true, false);
+
             if (status != WL_DISCONNECTED) {
                 Debug.println("WiFi connection lost, reconnecting...");
             }
-            startWiFi();
+
+            WiFi.reconnect();
+
+            s_reconnectAttempts++;
+            if (s_reconnectAttempts > 6) {
+                // After 1 minute, fall back to AP mode
+                WiFi.disconnect();
+                WiFi.softAP("LUPA", "espresso");
+            }
         }
     }
+    else
+    {
+        s_reconnectAttempts = 0;
+    }
+#endif
 }
 
 bool isConnecting() {
     if (WiFi.getMode() & WIFI_MODE_STA) {
         auto wifiStatus = WiFi.status();
-        if (wifiStatus == WL_IDLE_STATUS || wifiStatus >= WL_DISCONNECTED) {
+        //if (wifiStatus == WL_IDLE_STATUS || wifiStatus >= WL_DISCONNECTED) {
+        if (wifiStatus == WL_IDLE_STATUS) {
             return true;
         }
     }
