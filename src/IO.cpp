@@ -26,6 +26,7 @@ static bool s_isPwmInitialized = false;
 static bool  s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 static bool  s_waterLow = false;
+static unsigned long s_boilerInterval = 0;
 
 const float PUMP_DUTY_MIN = 67.0f;  // Depends on configured ledc frequency
 const float PUMP_DUTY_MAX = 255.0f;
@@ -209,7 +210,6 @@ void disableWaterLevel() {
 void updateBoilerPwm() {
     static unsigned long t_last = 0;
     static unsigned long s_boilerStartTs = 0;
-    static unsigned long s_boilerInterval = 0;
 
     auto t_now = millis();
     if ((t_now - t_last) >= HEATER_PERIOD) {
@@ -330,9 +330,10 @@ void setHeatPower(float duty) {
     s_heaterPower = duty;
 
     // Immediately turn off boiler, don't wait for next PWM cycle
-    // if (duty <= 0.0f) {
-    //     setHeat(false);
-    // }
+    if (duty <= 0.0f) {
+        Debug.println("HEAT Duty 0%");
+        setHeat(false);
+    }
 }
 
 void setHeat(bool en) {
@@ -349,6 +350,9 @@ void setHeat(bool en) {
             Debug.println("HEAT: OFF");
         }
         digitalWrite(PIN_OUT_HEAT, LOW);
+
+        // Reset PWM cycle
+        s_boilerInterval = 0;
     }
 
     prev_value = en;
