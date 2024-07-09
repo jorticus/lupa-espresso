@@ -99,9 +99,6 @@ void initGpio() {
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, LOW);
 
-    // BOOT button used for debugging
-    pinMode(0, INPUT);
-
     // Inputs & Outputs
     pinMode(PIN_IN_POWER_BTN, INPUT_PULLDOWN);
     pinMode(PIN_IN_LEVER, INPUT_PULLDOWN);

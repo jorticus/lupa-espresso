@@ -10,6 +10,8 @@
 
 using namespace Display;
 
+const uint32_t WDT_OTA_TIMEOUT_SEC = 10;
+
 namespace OTA
 {
 
@@ -91,6 +93,7 @@ void initOTA() {
         Debug.println("OTA Initiated");
 
         esp_task_wdt_reset();
+        esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true);
 
         uiRenderFirmwareUpdate(OtaState::Begin, 0);
     });

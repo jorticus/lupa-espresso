@@ -386,6 +386,49 @@ void uiRenderStatusRing(GfxCanvas& gfx, const char* message, uint16_t color, uin
     }
 }
 
+void uiRenderFaultRing(GfxCanvas& gfx) {
+    const uint32_t ring_w = 10;
+    const char* status_str = nullptr;
+    unsigned long t = millis();
+
+    switch (uiFault) {
+        case FaultState::LowWater:
+            status_str = "FILL WATER";
+            break;
+        case FaultState::NotHeating:
+            status_str = "NOT HEATING";
+            break;
+        case FaultState::OverTemp:
+            status_str = "OVER TEMP";
+            break;
+        case FaultState::SensorFailure:
+            status_str = "SENSOR FAILURE";
+            break;
+        case FaultState::SoftwarePanic:
+            status_str = "FIRMWARE CRASH";
+            break;
+        case FaultState::FailsafeRecovery:
+            status_str = "RECOVERY MODE";
+            break;
+        case FaultState::FirmwareUpdateFailure:
+            status_str = "UPDATE FAILED";
+            break;
+        default:
+            status_str = "FAULT";
+            break;
+    }
+
+    // Flash animation
+    float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
+    int16_t c = f*f*255.0f;
+    uint16_t color = TFT_RGB656(c, 0, 0);
+
+    uiRenderStatusRing(gfx, status_str, color, ring_w);
+    if (uiFaultMessage != nullptr) {
+        uiRenderLabelCentered(gfx, 24, TFT_WHITE, uiFaultMessage);
+    }
+}
+
 /// @brief Render the right UI
 void renderRight() {
     auto& gfx = gfx_right;
@@ -415,45 +458,8 @@ void renderRight() {
             break;
 
         case MachineState::Fault:
-        {
-            switch (uiFault) {
-                case FaultState::LowWater:
-                    status_str = "FILL WATER";
-                    break;
-                case FaultState::NotHeating:
-                    status_str = "NOT HEATING";
-                    break;
-                case FaultState::OverTemp:
-                    status_str = "OVER TEMP";
-                    break;
-                case FaultState::SensorFailure:
-                    status_str = "SENSOR FAILURE";
-                    break;
-                case FaultState::SoftwarePanic:
-                    status_str = "FIRMWARE CRASH";
-                    break;
-                case FaultState::FailsafeRecovery:
-                    status_str = "RECOVERY MODE";
-                    break;
-                case FaultState::FirmwareUpdateFailure:
-                    status_str = "UPDATE FAILED";
-                    break;
-                default:
-                    status_str = "FAULT";
-                    break;
-            }
-
-            // Flash animation
-            float f = sinf((t * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
-            int16_t c = f*f*255.0f;
-            uint16_t color = TFT_RGB656(c, 0, 0);
-
-            uiRenderStatusRing(gfx, status_str, color, ring_w);
-            if (uiFaultMessage != nullptr) {
-                uiRenderLabelCentered(gfx, 24, TFT_WHITE, uiFaultMessage);
-            }
+            uiRenderFaultRing(gfx);
             break;
-        }
 
         case MachineState::Ready:
             // Connect animation from Brewing phase
@@ -650,6 +656,14 @@ void render() {
     auto t3 = millis();
 
     //Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
+}
+
+void renderFailsafe() {
+    // Minimal UI render
+    tftClearCanvas();
+    uiRenderFaultRing(gfx_right);
+    tftUpdateDisplay();
+    Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
 }
 
 

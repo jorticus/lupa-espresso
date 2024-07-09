@@ -177,7 +177,11 @@ void loop()
             HeatControl::processControlLoop();
             PressureControl::processControlLoop();
         }
+
+        UI::render();
+    } else {
+        UI::renderFailsafe();
     }
 
-    UI::render();
+    //UI::render();
 }

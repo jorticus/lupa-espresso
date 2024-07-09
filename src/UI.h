@@ -19,6 +19,8 @@ namespace UI {
     /// @brief Render UI to the left & right canvas and update the display.
     void render();
 
+    void renderFailsafe();
+
     void uiFreezeGraphs();
 
     void triggerAnimation(Anim anim);
