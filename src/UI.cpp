@@ -9,6 +9,7 @@
 #include "IO.h"
 #include "Debug.h"
 #include "Network.h"
+#include "Images.h"
 #include "value_array.h"
 #include "secrets.h"
 #include "config.h"
@@ -50,21 +51,41 @@ void uiGetRadialCoords(int32_t r, float angle, int32_t *x, int32_t *y) {
     *y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
 }
 
-void uiRenderWiFiStatus(GfxCanvas& gfx) {
-    const int32_t r = (TFT_WIDTH/2) - 40;
-    int32_t x, y;
+extern "C" {
+        extern const uint8_t ico_wifi_map[32];
+}
 
-    // WiFi connection indicator
-    // TODO: Replace with WiFi icons
-    int wifiColor = TFT_YELLOW;
+void uiRenderWiFiStatus(GfxCanvas& gfx) {
+    const int32_t r = (TFT_WIDTH/2) - 50;
+    int32_t x, y;
+    uiGetRadialCoords(r, 22, &x, &y);
+
     if (Network::isConnected()) {
-        wifiColor = TFT_DARKGREEN;
-    } else if (Network::isConnecting()) {
-        float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
-            int16_t c = f*127.0f + 127.0f;
-            wifiColor = TFT_RGB656(0, 0, c);
-            //wifiColor = TFT_SKYBLUE;
+        uiRenderImage(gfx, x, y, ico_wifi_connected_16px, TFT_WHITE);
+        return;
     }
+    else if (Network::isConnecting()) {
+        float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
+        int16_t c = f*127.0f + 127.0f;
+        int color = TFT_RGB656(0, 0, c);
+        //wifiColor = TFT_SKYBLUE;
+        uiRenderImage(gfx, x, y, ico_wifi_none_16px, color);
+        return;
+    }
+    else {
+        uiRenderImage(gfx, x, y, ico_wifi_err_16px, TFT_ORANGE);
+    }
+
+    // // WiFi connection indicator
+    // int wifiColor = TFT_YELLOW;
+    // if (Network::isConnected()) {
+    //     wifiColor = TFT_DARKGREEN;
+    // } else if (Network::isConnecting()) {
+    //     float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
+    //         int16_t c = f*127.0f + 127.0f;
+    //         wifiColor = TFT_RGB656(0, 0, c);
+    //         //wifiColor = TFT_SKYBLUE;
+    // }
 
     // auto ip_str = WiFi.localIP().toString();
     // uiRenderLabelCentered(gfx_left, ip_str.c_str(), 30, TFT_LIGHTGREY);
@@ -88,8 +109,18 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
         uiRenderLabelCentered(gfx_left, err_msg, 0);
     }
 
-    uiGetRadialCoords(r, 22, &x, &y);
-    gfx.fillCircle(x, y, 5, wifiColor);
+    
+    //gfx.fillCircle(x, y, 5, TFT_SKYBLUE);
+
+    //gfx.drawBitmap(x, y, );
+    //gfx.setSwapBytes(true);
+    //uiRenderImage(gfx, x, y, e701, TFT_RED);
+    //auto img = ico_wifi;
+
+    //gfx.drawBitmap(x, y, (const uint8_t*)ico_wifi_map, 16, 16, TFT_WHITE);
+ 
+
+    //uiRenderImage(gfx, x, y, ico_wifi, TFT_WHITE);
 }
 
 void uiRenderStatusIcons(GfxCanvas& gfx) {
@@ -630,6 +661,22 @@ void uiRenderGlobalAnimations() {
     }
 }
 
+void uiRenderBackground() {
+    //tftClearCanvas();
+    
+    //uiRenderImage(gfx_left, 0, 0, bean_bg3);
+
+    if (uiState == MachineState::Ready) {
+        uiRenderImage(gfx_right, 0, 0, bg_coffee_eye);
+        uiRenderImage(gfx_left, 0, 0, bg_coffee_eye);
+    }
+    else {
+        // If background image is drawn, we don't need to clear the buffer.
+        gfx_left.fillSprite(TFT_BLACK);
+        gfx_right.fillSprite(TFT_BLACK);
+    }
+}
+
 void render() {
     auto t1 = millis();
 
@@ -637,8 +684,7 @@ void render() {
         return;
     }
 
-    gfx_left.fillSprite(TFT_BLACK);
-    gfx_right.fillSprite(TFT_BLACK);
+    uiRenderBackground();
 
     if (uiState == MachineState::SensorTest) {
         uiRenderSensorTest();

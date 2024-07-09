@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Display.h"
+#include "lvgl/lvgl.h"
 #include "value_array.h"
 
 /// @brief Common UI code
@@ -96,5 +97,58 @@ static void uiRenderGraph(GfxCanvas& gfx, ValueArray<T,N>& samples, float min_va
         }
     }
 }
+
+
+
+static void uiRenderImage(GfxCanvas& gfx, int32_t x, int32_t y, const lv_image_dsc_t& img, uint16_t color = TFT_WHITE) {
+
+    //gfx.drawBitmap(x, y, (const uint8_t*)img.data, w, h, color, TFT_YELLOW);
+    //gfx.pushImage(x, y, img.header.w, img.header.h, (uint16_t*)img.data);
+
+    if (img.header.cf == LV_COLOR_FORMAT_A1 || img.header.cf == LV_COLOR_FORMAT_I1) {
+        const uint8_t* bitmap = img.data;
+        int32_t dx = 0;
+        int32_t dy = 0;
+        for (int i = 0; i < img.data_size; i++) {
+            uint8_t b = *bitmap++;
+            for (int j = 7; j >= 0; j--, b >>= 1) {
+                if (b & 1) {
+                    gfx.drawPixel(x + dx + j, y + dy, color);
+                }
+            }
+            dx += 8;
+            if (dx >= img.header.w) {
+                dx = 0;
+                dy++;
+            }
+        }
+    } 
+    else if (img.header.cf == LV_COLOR_FORMAT_RGB565 || img.header.cf == LV_COLOR_FORMAT_BGR565) {
+        gfx.setSwapBytes(true);
+        gfx.pushImage(x, y, img.header.w, img.header.h, (uint16_t*)img.data);
+    }
+    else {
+        // Unsupported image type, show red square
+        gfx.fillRect(x, y, img.header.w, img.header.h, TFT_RED);
+    }
+}
+
+static void uiRenderImageCentered(GfxCanvas& gfx, int32_t x, int32_t y, const lv_image_dsc_t& img, uint16_t color = TFT_WHITE) {
+    int32_t w = img.header.w;
+    int32_t h = img.header.h;
+    x -= w / 2;
+    h -= h / 2;
+    uiRenderImage(gfx, x, y, img, color);
+}
+
+// static void uiRenderImage(GfxCanvas& gfx, int32_t x, int32_t y, const lv_image_dsc_t& img, uint16_t color = TFT_WHITE) {
+//     lv_img_dsc_t _img;
+//     _img.data = img.data;
+//     _img.data_size = img.data_size;
+//     _img.header.cf = img.header.cf;
+//     _img.header.w = img.header.w;
+//     _img.header.h = img.header.h;
+//     uiRenderImage(gfx, x, y, _img, color);
+// }
 
 }

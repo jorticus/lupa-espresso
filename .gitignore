@@ -9,3 +9,4 @@ secrets.json
 *.crt
 
 __pycache__/
+img/src/
