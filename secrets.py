@@ -7,6 +7,8 @@
 # This prevents you from accidentally checking in secrets into git.
 #
 
+from SCons import *
+
 Import("env")
 
 TYPE_CONSTANT           = 1
@@ -193,3 +195,6 @@ secretslib = env.StaticLibrary(
     [target_c]
 )
 env.Prepend(LIBS=[secretslib])
+
+# Ignore the fact this is hiding a builtin python lib
+# type: ignore
