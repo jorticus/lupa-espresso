@@ -166,7 +166,7 @@ static const char* wifi_status_str[] = {
 void handle() {
     static unsigned long t_last = 0;
     static wl_status_t last_status = WL_DISCONNECTED;
-    const unsigned long reconnect_interval_ms = 10000;
+    const unsigned long reconnect_interval_ms = 20000;
 
     auto status = WiFi.status();
     if (last_status != status) {
@@ -180,7 +180,8 @@ void handle() {
         (status == WL_NO_SSID_AVAIL) || 
         (status == WL_CONNECT_FAILED) || 
         (status == WL_CONNECTION_LOST) ||
-        (status == WL_DISCONNECTED))
+        (status == WL_DISCONNECTED) || 
+        (status == WL_IDLE_STATUS)) // Connecting
     {
         // Throttle reconnection attempts
         if ((millis() - t_last) > reconnect_interval_ms) {
