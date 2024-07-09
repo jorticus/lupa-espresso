@@ -51,10 +51,6 @@ void uiGetRadialCoords(int32_t r, float angle, int32_t *x, int32_t *y) {
     *y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
 }
 
-extern "C" {
-        extern const uint8_t ico_wifi_map[32];
-}
-
 void uiRenderWiFiStatus(GfxCanvas& gfx) {
     const int32_t r = (TFT_WIDTH/2) - 50;
     int32_t x, y;
@@ -62,65 +58,41 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
 
     if (Network::isConnected()) {
         uiRenderImage(gfx, x, y, ico_wifi_connected_16px, TFT_WHITE);
-        return;
     }
     else if (Network::isConnecting()) {
+        // Pulsing color animation
         float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
         int16_t c = f*127.0f + 127.0f;
         int color = TFT_RGB656(0, 0, c);
-        //wifiColor = TFT_SKYBLUE;
-        uiRenderImage(gfx, x, y, ico_wifi_none_16px, color);
-        return;
+        uiRenderImage(gfx, x, y, ico_wifi_unknown_16px, color);
     }
     else {
-        uiRenderImage(gfx, x, y, ico_wifi_err_16px, TFT_ORANGE);
+        // auto ip_str = WiFi.localIP().toString();
+        // uiRenderLabelCentered(gfx_left, ip_str.c_str(), 30, TFT_LIGHTGREY);
+        const char* err_msg = nullptr;
+        switch (WiFi.status()) {
+            case WL_NO_SSID_AVAIL:
+                // Bad SSID or AP not present
+                err_msg = "No WiFi";
+                break;
+            case WL_CONNECT_FAILED:
+                err_msg = "WiFi Failed";
+                break;
+            // case WL_IDLE_STATUS:
+            //     err_msg = "Connecting";
+            //     break;
+            case WL_CONNECTION_LOST:
+                err_msg = "Connection Lost";
+                break;
+        }
+        if (err_msg != nullptr) {
+            uiRenderImage(gfx, x, y, ico_wifi_err_16px, TFT_ORANGE);
+            uiRenderLabelCentered(gfx_left, err_msg, 0);
+        }
+        else {
+            uiRenderImage(gfx, x, y, ico_wifi_err_16px, TFT_DARKGREY);
+        }
     }
-
-    // // WiFi connection indicator
-    // int wifiColor = TFT_YELLOW;
-    // if (Network::isConnected()) {
-    //     wifiColor = TFT_DARKGREEN;
-    // } else if (Network::isConnecting()) {
-    //     float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
-    //         int16_t c = f*127.0f + 127.0f;
-    //         wifiColor = TFT_RGB656(0, 0, c);
-    //         //wifiColor = TFT_SKYBLUE;
-    // }
-
-    // auto ip_str = WiFi.localIP().toString();
-    // uiRenderLabelCentered(gfx_left, ip_str.c_str(), 30, TFT_LIGHTGREY);
-    const char* err_msg = nullptr;
-    switch (WiFi.status()) {
-        case WL_NO_SSID_AVAIL:
-            // Bad SSID or AP not present
-            err_msg = "No WiFi";
-            break;
-        case WL_CONNECT_FAILED:
-            err_msg = "WiFi Failed";
-            break;
-        // case WL_IDLE_STATUS:
-        //     err_msg = "Connecting";
-        //     break;
-        case WL_CONNECTION_LOST:
-            err_msg = "Connection Lost";
-            break;
-    }
-    if (err_msg != nullptr) {
-        uiRenderLabelCentered(gfx_left, err_msg, 0);
-    }
-
-    
-    //gfx.fillCircle(x, y, 5, TFT_SKYBLUE);
-
-    //gfx.drawBitmap(x, y, );
-    //gfx.setSwapBytes(true);
-    //uiRenderImage(gfx, x, y, e701, TFT_RED);
-    //auto img = ico_wifi;
-
-    //gfx.drawBitmap(x, y, (const uint8_t*)ico_wifi_map, 16, 16, TFT_WHITE);
- 
-
-    //uiRenderImage(gfx, x, y, ico_wifi, TFT_WHITE);
 }
 
 void uiRenderStatusIcons(GfxCanvas& gfx) {
@@ -128,31 +100,30 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
     int32_t x, y;
 
     // Boiler heater indicator
-    if (IO::isHeaterOn()) {
-        // TODO: Replace with heat icon
-        uiGetRadialCoords(r, -45, &x, &y);
-        gfx.fillCircle(x, y, 5, TFT_ORANGERED);
-    }
+    uiGetRadialCoords(r, -45, &x, &y);
+    //gfx.fillCircle(x, y, 5, TFT_ORANGERED);
+    uiRenderImage(gfx, x, y, ico_element_16px, 
+        (IO::isHeaterOn() ? TFT_ORANGERED : TFT_DARKGREY));
 
     // WiFi connection status
     uiRenderWiFiStatus(gfx);
 
     // Boiler heat mode
+    uiGetRadialCoords(r, +45, &x, &y);
     uint32_t color = TFT_BLACK;
     auto mode = HeatControl::getProfile();
     switch (mode) {
-        // case HeatControl::BoilerProfile::Brew:
-        //     color = TFT_RED;
-        //     break;
+        case HeatControl::BoilerProfile::Brew:
+            uiRenderImage(gfx, x, y, ico_cup_16px, TFT_SKYBLUE);
+            break;
         case HeatControl::BoilerProfile::Steam:
-            color = TFT_SKYBLUE;
+            uiRenderImage(gfx, x, y, ico_steam_16px, TFT_SKYBLUE);
             break;
         case HeatControl::BoilerProfile::Idle:
-            color = TFT_DARKCYAN;
             break;
     }
-    uiGetRadialCoords(r, +45, &x, &y);
-    gfx.fillCircle(x, y, 5, color);
+    
+    //gfx.fillCircle(x, y, 5, color);
 }
 
 void uiRenderPressureGauge(GfxCanvas& gfx, bool postbrew = false) {
@@ -663,8 +634,6 @@ void uiRenderGlobalAnimations() {
 
 void uiRenderBackground() {
     //tftClearCanvas();
-    
-    //uiRenderImage(gfx_left, 0, 0, bean_bg3);
 
     if (uiState == MachineState::Ready) {
         uiRenderImage(gfx_right, 0, 0, bg_coffee_eye);

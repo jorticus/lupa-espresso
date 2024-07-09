@@ -17,6 +17,10 @@ target_h_path = 'src/' + target_h
 lvgl_h_path = 'src/lvgl/lvgl.h'
 
 img_src = glob('img/*/*.png')
+img_src = [
+    f for f in img_src if 
+    os.path.basename(os.path.dirname(f)) != 'src'
+]
 
 img_typedef = 'const lv_image_dsc_t'
 
@@ -70,7 +74,6 @@ def generate_image(source, target, env):
 def gen_image_header(source, target, env):
     def emit_lines():
         yield '// Automatically generated'
-        yield '// Format: LVGLv8, CCF_ALPHA_1BIT'
         yield '#pragma once'
         yield ''
         yield '#include "lvgl/lvgl.h"'

@@ -1,5 +1,4 @@
 // Automatically generated
-// Format: LVGLv8, CCF_ALPHA_1BIT
 #pragma once
 
 #include "lvgl/lvgl.h"
