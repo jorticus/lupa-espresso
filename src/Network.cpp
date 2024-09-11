@@ -219,12 +219,4 @@ bool isConnecting() {
     return false;
 }
 
-bool isConnected() {
-    if (WiFi.getMode() & WIFI_MODE_STA) {
-        auto wifiStatus = WiFi.status();
-        return (wifiStatus == WL_CONNECTED);
-    }
-    return false;
-}
-
 }

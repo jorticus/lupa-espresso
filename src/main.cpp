@@ -28,7 +28,8 @@
 #include "Panic.h"
 #include <esp_task_wdt.h>
 
-const uint32_t WDT_TIMEOUT_SEC = 3;
+// NOTE: WiFiClient default timeout is 3 seconds, WDT should probably be longer than this.
+const uint32_t WDT_TIMEOUT_SEC = 4;
 
 Adafruit_MAX31865   rtd1(MAX1_CS, &Display::getSPIInstance());
 Adafruit_MAX31865   rtd2(MAX2_CS, &Display::getSPIInstance());
@@ -156,15 +157,20 @@ void loop()
 {
     esp_task_wdt_reset();
 
-    Network::handle();
-    if (WiFi.status() == WL_CONNECTED) {
-        OTA::handle();
-    }
-    DebugLogger::process();
     IO::process();
 
+    Network::handle();
+
+    if (Network::isConnected())
+    {
+        OTA::handle();
+        DebugLogger::process();
+    }
+
+    esp_task_wdt_reset();
+
     if (!s_failsafe) {
-        if (WiFi.status() == WL_CONNECTED) {
+        if (Network::isConnected()) {
             HomeAssistant::process();
         }
 
@@ -183,5 +189,5 @@ void loop()
         UI::renderFailsafe();
     }
 
-    //UI::render();
+    esp_task_wdt_reset();
 }
