@@ -16,10 +16,10 @@ namespace Defaults {
 
     static float SetPoint = CONFIG_BOILER_TEMPERATURE_C;
 
-    static const float Kp = 10.0f;
-    static const float Ki = Kp / 20.0f; // Ki = Kp / Tn
-    static const float Kd = Kp * 1.0f; // Kd = Kp * Tv
-    static const float Kd2 = Kp * 1.0f;
+    static const float Kp = 20.0f;
+    static const float Ki = 0.10f; //Kp / 20.0f; // Ki = Kp / Tn
+    static const float Kd = 10.0f; //Kp * 1.0f; // Kd = Kp * Tv
+    static const float Kd2 = 10.0f; //Kp * 1.0f;
 
     // Probably dependent on thermal losses to environment
     // This was emperically determined with the cover off, ambient temperature ~20C
