@@ -75,6 +75,17 @@ void uiRenderImage(GfxCanvas& gfx, int32_t x, int32_t y, const lv_image_dsc_t& i
                     gfx.drawPixel(x + dx + j, y + dy, color);
                 }
             }
+            // // Unroll loop
+            // int32_t _x = x + dx + 7;
+            // int32_t _y = y + dy;
+            // if (b & 0x01) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x02) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x04) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x08) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x10) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x20) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x40) gfx.drawPixel(_x--, _y, color);
+            // if (b & 0x80) gfx.drawPixel(_x--, _y, color);
             dx += 8;
             if (dx >= img.header.w) {
                 dx = 0;
@@ -83,7 +94,7 @@ void uiRenderImage(GfxCanvas& gfx, int32_t x, int32_t y, const lv_image_dsc_t& i
         }
     } 
     else if (img.header.cf == LV_COLOR_FORMAT_RGB565 || img.header.cf == LV_COLOR_FORMAT_BGR565) {
-        gfx.setSwapBytes(true);
+        //gfx.setSwapBytes(true);
         gfx.pushImage(x, y, img.header.w, img.header.h, (uint16_t*)img.data);
     }
     else {

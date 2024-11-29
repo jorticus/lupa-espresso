@@ -57,14 +57,14 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
     uiGetRadialCoords(r, 22, &x, &y);
 
     if (Network::isConnected()) {
-        uiRenderImage(gfx, x, y, ico_wifi_connected_16px, TFT_WHITE);
+        uiRenderImageCentered(gfx, x, y, ico_wifi_connected_16px, TFT_WHITE);
     }
     else if (Network::isConnecting()) {
         // Pulsing color animation
         float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
         int16_t c = f*127.0f + 127.0f;
         int color = TFT_RGB656(0, 0, c);
-        uiRenderImage(gfx, x, y, ico_wifi_unknown_16px, color);
+        uiRenderImageCentered(gfx, x, y, ico_wifi_unknown_16px, color);
     }
     else {
         // auto ip_str = WiFi.localIP().toString();
@@ -86,11 +86,11 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
                 break;
         }
         if (err_msg != nullptr) {
-            uiRenderImage(gfx, x, y, ico_wifi_err_16px, TFT_ORANGE);
+            uiRenderImageCentered(gfx, x, y, ico_wifi_err_16px, TFT_ORANGE);
             uiRenderLabelCentered(gfx_left, err_msg, 0);
         }
         else {
-            uiRenderImage(gfx, x, y, ico_wifi_err_16px, TFT_DARKGREY);
+            uiRenderImageCentered(gfx, x, y, ico_wifi_err_16px, TFT_DARKGREY);
         }
     }
 }
@@ -102,26 +102,28 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
     // Boiler heater indicator
     uiGetRadialCoords(r, -45, &x, &y);
     //gfx.fillCircle(x, y, 5, TFT_ORANGERED);
-    uiRenderImage(gfx, x, y, ico_element_16px, 
+    uiRenderImageCentered(gfx, x, y, ico_element_16px, 
         (IO::isHeaterOn() ? TFT_ORANGERED : TFT_DARKGREY));
 
     // WiFi connection status
     uiRenderWiFiStatus(gfx);
 
+#if 0
     // Boiler heat mode
     uiGetRadialCoords(r, +45, &x, &y);
     uint32_t color = TFT_BLACK;
     auto mode = HeatControl::getProfile();
     switch (mode) {
         case HeatControl::BoilerProfile::Brew:
-            uiRenderImage(gfx, x, y, ico_cup_16px, TFT_SKYBLUE);
+            uiRenderImageCentered(gfx, x, y, ico_cup_16px, TFT_SKYBLUE);
             break;
         case HeatControl::BoilerProfile::Steam:
-            uiRenderImage(gfx, x, y, ico_steam_16px, TFT_SKYBLUE);
+            uiRenderImageCentered(gfx, x, y, ico_steam_16px, TFT_SKYBLUE);
             break;
         case HeatControl::BoilerProfile::Idle:
             break;
     }
+#endif
     
     //gfx.fillCircle(x, y, 5, color);
 }
@@ -268,7 +270,7 @@ void uiRenderPostBrewScreen(GfxCanvas& gfx)
 
 void uiRenderReadyScreen(GfxCanvas& gfx)
 {
-    uiRenderLabelCentered(gfx, "READY", 0);
+    //uiRenderLabelCentered(gfx, "READY", 0);
     //uiRenderBrewGraph(gfx_right);
 }
 
@@ -636,8 +638,8 @@ void uiRenderBackground() {
     //tftClearCanvas();
 
     if (uiState == MachineState::Ready) {
-        uiRenderImage(gfx_right, 0, 0, bg_coffee_eye);
-        uiRenderImage(gfx_left, 0, 0, bg_coffee_eye);
+        uiRenderImage(gfx_right, 0, 0, bg_coffee_eye_2);
+        uiRenderImage(gfx_left, 0, 0, bg_coffee_eye_2);
     }
     else {
         // If background image is drawn, we don't need to clear the buffer.

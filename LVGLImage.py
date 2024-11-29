@@ -20,20 +20,20 @@ except ImportError:
 
 
 def uint8_t(val) -> bytes:
-    return val.to_bytes(1, byteorder='little')
+    return val.to_bytes(1, byteorder='big')
 
 
 def uint16_t(val) -> bytes:
-    return val.to_bytes(2, byteorder='little')
+    return val.to_bytes(2, byteorder='big')
 
 
 def uint24_t(val) -> bytes:
-    return val.to_bytes(3, byteorder='little')
+    return val.to_bytes(3, byteorder='big')
 
 
 def uint32_t(val) -> bytes:
     try:
-        return val.to_bytes(4, byteorder='little')
+        return val.to_bytes(4, byteorder='big')
     except OverflowError:
         raise ParameterError(f"overflow: {hex(val)}")
 
