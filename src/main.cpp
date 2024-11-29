@@ -7,6 +7,7 @@
 //#include <Adafruit_SPIDevice.h>
 #include <Adafruit_MAX31865.h>
 #include <WiFi.h>
+#include <SPIFFS.h>
 #include "secrets.h"
 #include "PressureTransducer.h"
 //#include "PulseCounter.h"
@@ -27,6 +28,7 @@
 #include "HomeAssistant.h"
 #include "Panic.h"
 #include "Task.h"
+#include "WebSrv.h"
 #include <esp_task_wdt.h>
 
 // NOTE: WiFiClient default timeout is 3 seconds, WDT should probably be longer than this.
@@ -106,6 +108,7 @@ void taskNetworkFunc(void* ctx) {
     Debug.println("Network Task Started");
 
     HomeAssistant::init();
+    WebSrv::setup();
 
     while (true) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -119,6 +122,8 @@ void taskNetworkFunc(void* ctx) {
             DebugLogger::process();
 
             HomeAssistant::process();
+
+            WebSrv::process();
         }
     }
 }
@@ -180,6 +185,11 @@ void initSystem() {
     PressureControl::initControlLoop();
 
     SensorSampler::start();
+
+    // Initialize SPIFFS
+    if (!SPIFFS.begin(true)) {
+        Serial.println("An error occurred while mounting SPIFFS");
+    }
     
     // Power-on state:
     //State::setState(State::MachineState::Preheat);
