@@ -324,6 +324,13 @@ bool isBrewing() {
 }
 
 void setHeatPower(float duty) {
+    if (duty < 0.0f) {
+        duty = 0.0f;
+    }
+    else if (duty >= 1.0f) {
+        duty = 1.0f;
+    }
+
     s_heaterPower = duty;
 
     // Immediately turn off boiler, don't wait for next PWM cycle
