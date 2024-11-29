@@ -47,6 +47,9 @@
 //#define CONFIG_IDLE_TIMEOUT_MS (30*60*1000) // 30m
 #define CONFIG_IDLE_TIMEOUT_MS (2*60*60*1000) // 2h
 
+// Fault clear timeout
+#define CONFIG_FAULT_CLEAR_TIMEOUT_MS (30*60*1000) // 30sec
+
 // If true, put device into power-saving mode as soon as it is
 // up to temperature. 
 #define CONFIG_IDLE_AFTER_PREHEAT (false)

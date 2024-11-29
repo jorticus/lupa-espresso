@@ -19,6 +19,7 @@ BrewStats brewStats         = {0};
 
 const unsigned long lever_debounce_interval_ms = 500;
 static unsigned long t_idle_start = 0;
+static unsigned long t_error_start = 0;
 static unsigned long t_steam_start = 0;
 static bool power_state = true;
 
@@ -436,6 +437,18 @@ void processState()
             // since preheat will transition to ready if we are able to.
             // Transition Fault -> Preheat (-> Ready)
             if (uiFault == FaultState::LowWater && !IO::isWaterTankLow()) {
+                uiFault = FaultState::NoFault;
+                uiFaultMessage = nullptr;
+                uiState = MachineState::Preheat;
+                resetIdleTimer();
+            }
+
+            if (t_error_start == 0) {
+                t_error_start = millis();
+            }
+            else if ((millis() - t_error_start) > (unsigned long)CONFIG_FAULT_CLEAR_TIMEOUT_MS) {
+                // Clear fault
+                t_error_start = 0;
                 uiFault = FaultState::NoFault;
                 uiFaultMessage = nullptr;
                 uiState = MachineState::Preheat;

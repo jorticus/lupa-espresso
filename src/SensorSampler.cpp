@@ -218,7 +218,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
         }
     }
 
-    // This GPIO (34) is cursed - it MUST be read here, due to an inexplicable affect from the MAX RTD chip.
+    // This GPIO (34) is cursed - it MUST be read here, due to an inexplicable effect from the MAX RTD chip.
     // Before RTD1, it always reads open. After RTD2, it always reads closed.
     // Outside of this loop, it will be unstable.
     // Even here, it must be debounced as it will occasinally flip states.
