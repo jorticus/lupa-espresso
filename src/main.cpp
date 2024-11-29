@@ -26,6 +26,7 @@
 #include "OTA.h"
 #include "HomeAssistant.h"
 #include "Panic.h"
+#include "Task.h"
 #include <esp_task_wdt.h>
 
 // NOTE: WiFiClient default timeout is 3 seconds, WDT should probably be longer than this.
@@ -34,6 +35,12 @@ const uint32_t WDT_TIMEOUT_SEC = 4;
 Adafruit_MAX31865   rtd1(MAX1_CS, &Display::getSPIInstance());
 Adafruit_MAX31865   rtd2(MAX2_CS, &Display::getSPIInstance());
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
+
+
+static TaskHandle_t task_core;
+static TaskHandle_t task_network;
+static TaskHandle_t task_ui;
+static TaskHandle_t task_display;
 
 static bool s_failsafe = true;
 
@@ -75,12 +82,11 @@ bool handle_reset() {
     }
 }
 
+/**
+ * Criticial initialization
+ * Only initialize subsystems required for setting up OTA update and UI feedback
+*/
 void initCritical() {
-    //
-    // Criticial initialization
-    // Only initialize subsystems required for setting up OTA update and UI feedback
-    //
-
     Serial.begin(9600);
 
     IO::initGpio();
@@ -91,6 +97,74 @@ void initCritical() {
     OTA::initOTA();
 }
 
+/**
+ * Network Task (CORE 1, PRIORITY 2)
+ * Handles all network connection logic.
+ * Must be higher priority so it can preempt other tasks.
+*/
+void taskNetworkFunc(void* ctx) {
+    Debug.println("Network Task Started");
+
+    HomeAssistant::init();
+
+    while (true) {
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        Network::handle();
+
+        if (Network::isConnected())
+        {
+            // TODO: This causes problems when activating OTA...
+            OTA::handle(); // May block
+
+            DebugLogger::process();
+
+            HomeAssistant::process();
+        }
+    }
+}
+
+/**
+ * Core Task (CORE 1, PRIORITY 3) HIGH PRIORITY
+ * Handles I/O, State Machine, Control Loops
+*/
+void taskCoreFunc(void* ctx) {
+    Debug.println("Core Task Started");
+
+    while (true) {
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+
+        IO::process();
+
+        SensorSampler::process();
+        State::processState();
+
+        if (State::uiState != State::MachineState::FirmwareUpdate && 
+            State::uiState != State::MachineState::Off)
+        {
+            HeatControl::processControlLoop();
+            PressureControl::processControlLoop();
+        }
+
+    }
+    //vTaskDelete(nullptr);
+}
+
+/**
+ * Render Task (CORE 1, PRIORITY 1)
+ * Handles rendering of UI.
+ * Must be low priority so other tasks can preempt it.
+*/
+void taskRenderUiFunc(void* ctx) {
+    Debug.println("Render Task Started");
+
+    while (true) {
+        taskYIELD();
+        UI::render();
+    }
+}
+
+
+
 void initSystem() {
 
     //
@@ -98,7 +172,7 @@ void initSystem() {
     //
 
     IO::initPwm();
-    HomeAssistant::init();
+    //HomeAssistant::init();
 
     bool isSensorsInitialized = SensorSampler::initialize();
 
@@ -113,12 +187,20 @@ void initSystem() {
     //State::setState(State::MachineState::SensorTest);
 
     // If sensors could not be initialized, indicate fault
-    if (State::uiState != State::MachineState::SensorTest && (!isSensorsInitialized))
+    if (State::uiState != State::MachineState::SensorTest && 
+       (!isSensorsInitialized))
     {
         State::setFault(State::FaultState::SensorFailure, "INIT FAILURE");
     }
+
+    xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", TASK_STACK_SIZE, nullptr, 3, &task_core,    CORE1);
+    xTaskCreatePinnedToCore(taskNetworkFunc,  "NetTask",  TASK_STACK_SIZE, nullptr, 2, &task_network, CORE1);
+    xTaskCreatePinnedToCore(taskRenderUiFunc, "UiTask",   TASK_STACK_SIZE, nullptr, 1, &task_ui,      CORE1);
 }
 
+/**
+ * Main setup entrypoint
+*/
 void setup() {
     // Disable watchdog during init to give system time to boot.
     // The WiFi especially can take a significant amount of time to connect.
@@ -153,41 +235,26 @@ void setup() {
     Debug.println("Done!");
 }
 
+/**
+ * Background RTOS task (CORE 1, PRIORITY 1)
+*/
 void loop()
 {
     esp_task_wdt_reset();
+    taskYIELD();
 
-    IO::process();
+    // DO NOT MODIFY
+    // This ensures the system can continue to receive firmware updates.
+    if (s_failsafe) {
+        IO::process();
+        Network::handle();
 
-    Network::handle();
-
-    if (Network::isConnected())
-    {
-        OTA::handle();
-        DebugLogger::process();
-    }
-
-    esp_task_wdt_reset();
-
-    if (!s_failsafe) {
-        if (Network::isConnected()) {
-            HomeAssistant::process();
-        }
-
-        SensorSampler::process();
-        State::processState();
-
-        if (State::uiState != State::MachineState::FirmwareUpdate && 
-            State::uiState != State::MachineState::Off)
+        if (Network::isConnected())
         {
-            HeatControl::processControlLoop();
-            PressureControl::processControlLoop();
+            OTA::handle();
+            DebugLogger::process();
         }
 
-        UI::render();
-    } else {
         UI::renderFailsafe();
     }
-
-    esp_task_wdt_reset();
 }

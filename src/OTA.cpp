@@ -89,13 +89,14 @@ void initOTA() {
         // Put system into a safe state
         IO::failsafe();
         State::setState(State::MachineState::FirmwareUpdate);
-        Display::setBrightness(1.0f);
+        //Display::setBrightness(1.0f);
         Debug.println("OTA Initiated");
 
         esp_task_wdt_reset();
         esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true);
 
-        uiRenderFirmwareUpdate(OtaState::Begin, 0);
+        // TODO: Communicate state to UI task. Cannot render here without causing issues...
+        //uiRenderFirmwareUpdate(OtaState::Begin, 0);
     });
 
     ArduinoOTA.onEnd([]() {
@@ -103,7 +104,7 @@ void initOTA() {
 
         esp_task_wdt_reset();
 
-        uiRenderFirmwareUpdate(OtaState::Success, 100);
+        //uiRenderFirmwareUpdate(OtaState::Success, 100);
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -113,7 +114,7 @@ void initOTA() {
         if (x != last_x) {
              last_x = x;
             int p = (progress * 100) / total;
-            uiRenderFirmwareUpdate(OtaState::Progress, p);
+            //uiRenderFirmwareUpdate(OtaState::Progress, p);
         }
 
         esp_task_wdt_reset();
