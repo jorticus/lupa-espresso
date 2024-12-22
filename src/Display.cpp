@@ -94,19 +94,21 @@ static uint8_t cie1931_table[] = {
 };
 
 void setBrightness(float brightness) {
-    uint8_t b = brightness * 0xFF;
-    Debug.printf("Display Brightness: %d\n", b);
-    
-    if (b > 0) {
-        // Max duty is 8 bits (0xFF)
-        ledcWrite(LEDC_CH_DISPLAY, cie1931_table[b]);
-    }
-    else {
-        ledcWrite(LEDC_CH_DISPLAY, 0);
-        digitalWrite(TFT_BL, LOW);
-    }
+    if (brightness != display_brightness) {
+        uint8_t b = brightness * 0xFF;
+        Debug.printf("Display Brightness: %d\n", b);
+        
+        if (b > 0) {
+            // Max duty is 8 bits (0xFF)
+            ledcWrite(LEDC_CH_DISPLAY, cie1931_table[b]);
+        }
+        else {
+            ledcWrite(LEDC_CH_DISPLAY, 0);
+            digitalWrite(TFT_BL, LOW);
+        }
 
-    display_brightness = brightness;
+        display_brightness = brightness;
+    }
 }
 
 void turnOff() {
