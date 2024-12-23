@@ -174,11 +174,12 @@ namespace MqttParam {
         }
 
         void publish() override {
+            const bool retained = true;
             char topic[MAX_PARAM_NAME_LEN];
             snprintf(topic, sizeof(topic), "%s%s", manager.prefix, this->name);
             String value_str(this->_value);
             Debug.printf("Publish topic %s\n", topic);
-            manager.client.publish(topic, value_str.c_str());
+            manager.client.publish(topic, value_str.c_str(), retained);
         }
 
     private:
