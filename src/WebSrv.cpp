@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include "WebSrv.h"
 #include "Debug.h"
+#include "Data.h"
 
 #include "SensorSampler.h"
 #include "HeatControl.h"
@@ -49,6 +50,9 @@ void updateSensorBuffer(String& response) {
     // I/O state
     json["pull"]  = IO::isLeverPulled();
     json["brew"]  = IO::isBrewing();
+
+    // System
+    json["mem"] = esp_get_free_heap_size();
     
     json.printTo(response);
 }
@@ -103,14 +107,19 @@ static void handleTemperature(AsyncWebServerRequest * req) {
     req->send(200, "application/json", response);
 }
 
-
 void WebSrv::setup() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/index.html", "text/html");
+        // source: data/index.html
+        request->send_P(200, "text/html", data::index_html_bytes, data::index_html_size);
+    });
+    server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+        // source: data/script.js
+        request->send_P(200, "application/javascript", data::script_js_bytes, data::script_js_size);
     });
     server.on("/sensors", handleTemperature);
-    //server.serveStatic("/static/", SPIFFS, "/");
 
+    //server.serveStatic("/static/", SPIFFS, "/");
+ 
     // Allow remote access so we can run HTML from another server
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 

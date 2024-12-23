@@ -12,10 +12,10 @@
 <body>
     <h2>Real-time Temperature Graph</h2>
     <canvas id="tempChart" width="400" height="200"></canvas>
-    <h2>Real-time Pressure Graph</h2>
+    <!-- <h2>Real-time Pressure Graph</h2>
     <canvas id="pressureChart" width="400" height="200"></canvas>
     <h2>PID State</h2>
-    <canvas id="pidChart" width="400" height="200"></canvas>
+    <canvas id="pidChart" width="400" height="200"></canvas> -->
 
     <script>
         //const gateway = `ws://${window.location.hostname}/ws`;
@@ -26,173 +26,40 @@
 
         var websocket;
 
-        // Chart.js setup
+
         const temperatureCtx = document.getElementById('tempChart').getContext('2d');
-        const tempChart = new Chart(temperatureCtx, {
-            type: 'line',
-            data: {
-                labels: [],  // Time labels
-                datasets: [{
-                    label: 'Boiler Temperature (°C)',
-                    data: [],
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    fill: true
-                },{
-                    label: 'Hx Temperature (°C)',
-                    data: [],
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true
-                }
-                ]
-            },
-            options: {
-                scales: {
-                    x: {
-                        type: 'time',   // Use time scale
-                        time: {
-                            unit: 'second',
-                            tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
-                        },
-                        title: {
-                            display: true,
-                            text: 'Time'
-                        }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        suggestedMin: 20.0,
-                        suggestedMax: 150.0,
-                        title: {
-                            display: true,
-                            text: 'Temperature (°C)'
-                        }
-                    },
-                   /* y2: {  // Pressure Y axis
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Pressure (Bar)'
-                        },
-                        position: 'right'  // Position the second axis on the right
-                    }*/
-                }
-            }
-        });
-
-        // Pressure Chart setup
-        const pressureCtx = document.getElementById('pressureChart').getContext('2d');
-        const pressureChart = new Chart(pressureCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Pressure (hPa)',
-                    data: [],
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true
-                }]
-            },
-            options: {
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: 'second',
-                            tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
-                        },
-                        title: {
-                            display: true,
-                            text: 'Time'
-                        }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        suggestedMin: 1.0,
-                        suggestedMax: 12.0,
-                        title: {
-                            display: true,
-                            text: 'Pressure (Bar)'
-                        }
-                    }
-                }
-            }
-        });
-
-
-        const pidCtx = document.getElementById('pidChart').getContext('2d');
-        const pidChart = new Chart(pidCtx, {
-            type: 'line',
-            data: {
-                labels: [],  // Time labels
-                datasets: [{
-                    label: 'SP',
-                    data: [],
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    fill: true
-                },{
-                    label: 'PV',
-                    data: [],
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true
-                },{
-                    label: 'I',
-                    data: [],
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true
-                },{
-                    label: 'D1',
-                    data: [],
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true
-                },{
-                    label: 'D2',
-                    data: [],
-                    borderColor: 'rgb(255, 99, 132)',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    fill: true
-                }
-                ]
-            },
-            options: {
-                scales: {
-                    x: {
-                        type: 'time',   // Use time scale
-                        time: {
-                            unit: 'second',
-                            tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
-                        },
-                        title: {
-                            display: true,
-                            text: 'Time'
-                        }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        suggestedMin: 20.0,
-                        suggestedMax: 150.0,
-                        title: {
-                            display: true,
-                            text: 'Temperature (°C)'
-                        }
-                    },
-                   /* y2: {  // Pressure Y axis
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Pressure (Bar)'
-                        },
-                        position: 'right'  // Position the second axis on the right
-                    }*/
-                }
-            }
-        });
+const tempChart = new Chart(temperatureCtx, {
+type: 'line',
+data: {
+labels: [],  // Time labels
+datasets: [{
+label: 'Boiler Temperature (C)',
+data: [],
+borderColor: 'rgb(75, 192, 192)',
+backgroundColor: 'rgba(75, 192, 192, 0.2)',
+fill: true
+},{
+label: 'Hx Temperature (C)',
+data: [],
+borderColor: 'rgb(255, 99, 132)',
+backgroundColor: 'rgba(255, 99, 132, 0.2)',
+fill: true
+}]
+},
+options: { scales: {
+x: {
+	type: 'time',   // Use time scale
+	time: { unit: 'second', tooltipFormat: 'yyyy-MM-dd HH:mm:ss' },
+	title: { display: true, text: 'Time' }
+},
+y: {
+	beginAtZero: false,
+	suggestedMin: 20.0,
+	suggestedMax: 150.0,
+	title: { display: true, text: 'Temperature (C)' }
+},
+}
+}});
 
         // Update the chart with new data
         function updateChart(response) {
@@ -203,44 +70,18 @@
             const now = new Date();
 
             tempChart.data.labels.push(now);
-            pressureChart.data.labels.push(now);
-            pidChart.data.labels.push(now);
 
             tempChart.data.datasets[0].data.push(temp1);
             tempChart.data.datasets[1].data.push(temp2);
-            pressureChart.data.datasets[0].data.push(pressure);
-
-            pidChart.data.datasets[0].data.push(parseFloat(response.tsp));
-            pidChart.data.datasets[1].data.push(parseFloat(response.t1));
-            pidChart.data.datasets[2].data.push(parseFloat(response.pid_i));
-            pidChart.data.datasets[3].data.push(parseFloat(response.pid_d1));
-            pidChart.data.datasets[4].data.push(parseFloat(response.pid_d2));
 
             if (tempChart.data.labels.length > max_samples) {  // Limit to 60 data points
                 tempChart.data.labels.shift();
                 tempChart.data.datasets[0].data.shift();
                 tempChart.data.datasets[1].data.shift();
             }
-            if (pressureChart.data.labels.length > max_samples) {
-                pressureChart.data.labels.shift();
-                pressureChart.data.datasets[0].data.shift();
-            }
-            if (pidChart.data.labels.length > max_samples) {
-                pidChart.data.labels.shift();
-                for (i = 0; i < pidChart.data.datasets.length; i++) {
-                    pidChart.data.datasets[i].data.shift();
-                }
-            }
-
 
             tempChart.update();
-            pressureChart.update();
-            pidChart.update();
         }
-
-        // function getReadings(){
-        //     websocket.send("getReadings");
-        // }
 
         function onOpen(event) {
             console.log('Connection opened');
@@ -283,8 +124,6 @@
                 console.error('Error fetching data:', error);
             }
         }
-
-        //setInterval(fetchData, interval);
     </script>
 </body>
 </html>
