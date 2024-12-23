@@ -10,7 +10,7 @@
 
 using namespace Display;
 
-const uint32_t WDT_OTA_TIMEOUT_SEC = 10;
+const uint32_t WDT_OTA_TIMEOUT_SEC = 120;
 
 namespace OTA
 {
@@ -86,9 +86,8 @@ void initOTA() {
     // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
     ArduinoOTA.onStart([]() {
-        // Put system into a safe state
-        IO::failsafe();
         State::setState(State::MachineState::FirmwareUpdate);
+
         //Display::setBrightness(1.0f);
         Debug.println("OTA Initiated");
 
@@ -105,6 +104,9 @@ void initOTA() {
         esp_task_wdt_reset();
 
         //uiRenderFirmwareUpdate(OtaState::Success, 100);
+
+        //ESP.restart();
+        esp_restart();
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -137,7 +139,7 @@ void initOTA() {
         uiRenderFirmwareUpdate(OtaState::Failure, (int)error);
 
         delay(1000);
-        ESP.restart();
+        esp_restart();
     });
 
     // Enable OTA

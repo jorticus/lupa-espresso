@@ -245,6 +245,12 @@ void onStateChanged(MachineState lastState, MachineState newState) {
             }
             break;
 
+        case MachineState::FirmwareUpdate:
+            HeatControl::setProfile(HeatControl::BoilerProfile::Off);
+            IO::failsafe();
+            SensorSampler::stop();
+            break;
+
         case MachineState::Fault:
             IO::failsafe();
             break;
