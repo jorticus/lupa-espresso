@@ -120,11 +120,12 @@ void beginBrew()
     resetIdleTimer();
     auto t_now = millis();
 
-    // De-bounce
-    // (prevent another shot from being registered if lever is quickly released and pulled again)
-    if ((brewStats.end_brew_time > 0) && ((t_now - brewStats.end_brew_time) < lever_debounce_interval_ms)) {
-        return;
-    }
+    // TODO: This broke after moving into a task
+    // // De-bounce
+    // // (prevent another shot from being registered if lever is quickly released and pulled again)
+    // if ((brewStats.end_brew_time > 0) && ((t_now - brewStats.end_brew_time) < lever_debounce_interval_ms)) {
+    //     return;
+    // }
 
     // Restart brew timer
     brewStats.start_brew_time = t_now;
