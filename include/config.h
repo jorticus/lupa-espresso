@@ -1,9 +1,9 @@
 #pragma once
 
 // Target boiler temperature for brewing (BoilerProfile::Brew)
-//#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
+#define CONFIG_BOILER_TEMPERATURE_C (115.0f) // ~95C on grouphead
 //#define CONFIG_BOILER_TEMPERATURE_C (117.0f) // ~96C on grouphead
-#define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
+//#define CONFIG_BOILER_TEMPERATURE_C (120.0f) // ~97C on grouphead
 //#define CONFIG_BOILER_TEMPERATURE_C (125.0f) // ~94C on grouphead according to manual
 
 // Target boiler temperature for steaming (BoilerProfile::Steam)
@@ -45,7 +45,9 @@
 // Machine idle timeout
 //#define CONFIG_IDLE_TIMEOUT_MS (0) // Disabled
 //#define CONFIG_IDLE_TIMEOUT_MS (30*60*1000) // 30m
-#define CONFIG_IDLE_TIMEOUT_MS (2*60*60*1000) // 2h
+//#define CONFIG_IDLE_TIMEOUT_MS (2*60*60*1000) // 2h
+#define CONFIG_IDLE_TIMEOUT_MS (2*60*60*1000) // 1h
+//#define CONFIG_IDLE_TIMEOUT_MS (60*1000) // 1m
 
 // Fault clear timeout
 #define CONFIG_FAULT_CLEAR_TIMEOUT_MS (30*60*1000) // 30sec
@@ -73,3 +75,10 @@
 
 // Whether to enable pressure profiling (PID control of pressure during brew)
 #define CONFIG_ENABLE_PRESSURE_PROFILING (true)
+
+// Maximum pressure range to display
+#define PRESSURE_UI_MAX_BAR (10.0f)
+
+// Maximum flowrate for water flow sensor (mL/s) to display
+//#define FLOW_UI_MAX_VALUE (15.0f)
+#define FLOW_UI_MAX_VALUE (5.0f)

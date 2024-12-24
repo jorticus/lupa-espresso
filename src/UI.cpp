@@ -51,10 +51,7 @@ void uiGetRadialCoords(int32_t r, float angle, int32_t *x, int32_t *y) {
     *y = (TFT_HEIGHT/2) + (r * +cosf(angle * deg2rad));
 }
 
-void uiRenderWiFiStatus(GfxCanvas& gfx) {
-    const int32_t r = (TFT_WIDTH/2) - 50;
-    int32_t x, y;
-    uiGetRadialCoords(r, 22, &x, &y);
+void uiRenderWiFiStatus(GfxCanvas& gfx, int32_t x, int32_t y) {
 
     if (Network::isConnected()) {
         uiRenderImageCentered(gfx, x, y, ico_wifi_connected_16px, TFT_WHITE);
@@ -96,17 +93,17 @@ void uiRenderWiFiStatus(GfxCanvas& gfx) {
 }
 
 void uiRenderStatusIcons(GfxCanvas& gfx) {
-    const int32_t r = (TFT_WIDTH/2) - 40;
+    const int32_t r = (TFT_WIDTH/2) - 20;
     int32_t x, y;
 
     // Boiler heater indicator
-    uiGetRadialCoords(r, -45, &x, &y);
-    //gfx.fillCircle(x, y, 5, TFT_ORANGERED);
+    uiGetRadialCoords(r, -135, &x, &y);
     uiRenderImageCentered(gfx, x, y, ico_element_16px, 
         (IO::isHeaterOn() ? TFT_ORANGERED : TFT_DARKGREY));
 
     // WiFi connection status
-    uiRenderWiFiStatus(gfx);
+    uiGetRadialCoords(r, +135, &x, &y);
+    uiRenderWiFiStatus(gfx, x, y);
 
 #if 0
     // Boiler heat mode
@@ -129,8 +126,9 @@ void uiRenderStatusIcons(GfxCanvas& gfx) {
 }
 
 void uiRenderPressureGauge(GfxCanvas& gfx, bool postbrew = false) {
+    int32_t y = 80;
     float min_pressure = 1.0f; // Ambient air pressure
-    float max_pressure = PRESSURE_MAX_BAR;
+    float max_pressure = PRESSURE_UI_MAX_BAR;
     float value_norm = (SensorSampler::getPressure() - min_pressure) / (max_pressure - min_pressure);
     uiRenderGauge(gfx, value_norm, COLOUR_PRESSURE);
 
@@ -138,15 +136,16 @@ void uiRenderPressureGauge(GfxCanvas& gfx, bool postbrew = false) {
         float avg = 0.0f;
         if (brewStats.brew_pressure_avg_count > 0)
             avg = brewStats.avg_brew_pressure / brewStats.brew_pressure_avg_count;
+
         uiRenderLabelFormattedCentered(gfx,
-            60,
+            y,
             TFT_WHITE,
             "%.1f Bar",
             avg);
     }
-    else {
+    else if (uiState == MachineState::Brewing) {
         uiRenderLabelFormattedCentered(gfx,
-            60,
+            y,
             TFT_WHITE,
             (SensorSampler::isPressureValid() ? "%.1f Bar" : "- Bar"),
             SensorSampler::getPressure());
@@ -181,22 +180,23 @@ void uiRenderHeaterPowerGauge(GfxCanvas& gfx) {
 }
 
 void uiRenderFlowGauge(GfxCanvas& gfx, bool postbrew = false) {
+    const int32_t y = 30;
     float flow = SensorSampler::getFlowRate();
     float min_flow = 0.0f;
-    float max_flow = FLOW_MAX_VALUE;
+    float max_flow = FLOW_UI_MAX_VALUE;
     float value_norm = (flow - min_flow) / (max_flow - min_flow);
     uiRenderGauge(gfx, value_norm, COLOUR_FLOW_RATE, 15);
 
-    uiRenderLabelFormattedCentered(gfx, -60, TFT_RED, "%.3f", flow);
+    //uiRenderLabelFormattedCentered(gfx, -60, TFT_RED, "%.3f", flow);
 
     if (postbrew) {
-        uiRenderLabelFormattedCentered(gfx, 90, TFT_WHITE, "%.0f mL", brewStats.total_volume);
+        uiRenderLabelFormattedCentered(gfx, y, TFT_WHITE, "%.0f mL", brewStats.total_volume);
     }
-    else {
+    else if (uiState == MachineState::Brewing) {
         // NOTE: Only accurate to +/- 10mL assuming system is primed
         // Cannot fully account for volume lost to internal plumbing
         float flow_accum = SensorSampler::getTotalFlowVolume();
-        uiRenderLabelFormattedCentered(gfx, 90, TFT_WHITE, "%.0f mL", flow_accum);
+        uiRenderLabelFormattedCentered(gfx, y, TFT_WHITE, "%.0f mL", flow_accum);
     }
 }
 
@@ -204,6 +204,7 @@ void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
     float min_value = getTemperatureMinRange();
     float max_value = getTemperatureMaxRange();
 
+#if 0
     // DEBUG: Print PID outputs
     const float pid_max = 50.0f;
     const float pid_min = -50.0f;
@@ -211,15 +212,16 @@ void uiRenderTemperatureGraph(GfxCanvas& gfx, uint16_t color = TFT_WHITE) {
     uiRenderGraph(gfx, HeatControl::pid_d,  pid_min, pid_max, TFT_YELLOW);
     uiRenderGraph(gfx, HeatControl::pid_d2, pid_min, pid_max, TFT_RED);
 
-    uiRenderGraph(gfx, temperatureSamples,  min_value, max_value, color, HeatControl::getSetpoint());
     uiRenderGraph(gfx, temperatureSamples2, min_value, max_value, TFT_SILVER);
+#endif
 
+    uiRenderGraph(gfx, temperatureSamples,  min_value, max_value, color, HeatControl::getSetpoint());
 }
 
 void uiRenderBrewGraph(GfxCanvas& gfx, bool freeze = false) {
     {
         float min_value = 0.0f;
-        float max_value = PRESSURE_MAX_BAR;
+        float max_value = PRESSURE_UI_MAX_BAR;
         auto& samples = (freeze) ? pressureSamplesFrozen : pressureSamples;
 
         uiRenderGraph(gfx, samples, min_value, max_value, COLOUR_PRESSURE);
@@ -227,7 +229,7 @@ void uiRenderBrewGraph(GfxCanvas& gfx, bool freeze = false) {
 
     {
         float min_value = 0.0f;
-        float max_value = FLOW_MAX_VALUE;
+        float max_value = FLOW_UI_MAX_VALUE;
         auto& samples = (freeze) ? flowSamplesFrozen : flowSamples;
 
         uiRenderGraph(gfx, samples, min_value, max_value, COLOUR_FLOW_RATE);
@@ -241,6 +243,7 @@ void uiRenderPostBrewScreen(GfxCanvas& gfx)
 
     float brewTimeSec = (brewStats.end_brew_time - brewStats.start_brew_time) / 1000.0f;
 
+#if 0
     // Rate the brew
     const char* text = "DONE!";
 
@@ -259,13 +262,16 @@ void uiRenderPostBrewScreen(GfxCanvas& gfx)
         if (avg_pressure < min_required_brew_pressure) {
             text = "NO PRESSURE";
         }
-    } 
+    }
 
     if (text != nullptr) {
         uiRenderLabelCentered(gfx, 0, TFT_WHITE, text);
     }
 
     uiRenderLabelFormattedCentered(gfx, 30, TFT_WHITE, "%.1f s", brewTimeSec);
+#else
+    uiRenderLabelFormattedCentered(gfx, 0, TFT_WHITE, "%.1f s", brewTimeSec);
+#endif
 }
 
 void uiRenderReadyScreen(GfxCanvas& gfx)
@@ -276,11 +282,11 @@ void uiRenderReadyScreen(GfxCanvas& gfx)
 
 void uiRenderBrewingScreen(GfxCanvas& gfx) {
 
-    uiRenderLabelCentered(gfx, 0, TFT_WHITE, "BREWING");
+    //uiRenderLabelCentered(gfx, 0, TFT_WHITE, "BREWING");
 
     float brewTimeSec = (millis() - brewStats.start_brew_time) / 1000.0f;
     uiRenderLabelFormattedCentered(gfx, 
-        30, 
+        0, 
         TFT_WHITE,
         "%.1f", 
         brewTimeSec);
@@ -343,12 +349,11 @@ void renderLeft() {
     uiRenderTemperatureGraph(gfx);
 
     float t_boiler = SensorSampler::getTemperature();
-    float t2 = SensorSampler::getTemperature2();
 
     // Render current temperature
     bool is_t_valid = SensorSampler::isTemperatureValid() && (t_boiler > 1.0f);
     uiRenderLabelFormattedCentered(gfx,
-        (TFT_HEIGHT/2 - 60),
+        80,
         TFT_WHITE,
         (is_t_valid ? "%.2f C" : "- C"), 
         t_boiler);
@@ -358,19 +363,11 @@ void renderLeft() {
     // if (is_est_valid) {
     //     float t_estimated = SensorSampler::getEstimatedGroupheadTemperature();
     //     uiRenderLabelFormattedCentered(gfx,
-    //         (TFT_HEIGHT/2 - 30),
+    //         (TFT_HEIGHT/2 - 60),
     //         TFT_WHITE,
     //         "%.0f C",
     //         t_estimated);
     // }
-
-    bool is_t2_valid = (t2 > 1.0f);
-    uiRenderLabelFormattedCentered(gfx,
-        (TFT_HEIGHT/2 - 30),
-        TFT_SILVER,
-        (is_t2_valid ? "%.2f C" : "- C"),
-        t2);
-
 
     uiRenderTemperatureGauge(gfx);
     uiRenderHeaterPowerGauge(gfx);
@@ -638,8 +635,8 @@ void uiRenderBackground() {
     //tftClearCanvas();
 
     if (uiState == MachineState::Ready) {
-        uiRenderImage(gfx_right, 0, 0, bg_coffee_eye_2);
-        uiRenderImage(gfx_left, 0, 0, bg_coffee_eye_2);
+        uiRenderImage(gfx_right, 0, 0, bg_coffee_eye);
+        uiRenderImage(gfx_left, 0, 0, bg_coffee_eye);
     }
     else {
         // If background image is drawn, we don't need to clear the buffer.

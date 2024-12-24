@@ -69,10 +69,7 @@
 // the actual full scale is 120 units.
 // Pressure should read 1.0 bar when open to atmosphere.
 #define PRESSURE_FULL_SCALE (120) // Bar x10
-#define PRESSURE_MAX_BAR (12.0f)
 
-// Maximum flowrate for water flow sensor (mL/s)
-#define FLOW_MAX_VALUE (15.0f)
 
 //
 // SPI Bus:
