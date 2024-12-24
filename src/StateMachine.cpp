@@ -379,8 +379,9 @@ void processState()
             if (detectFaults()) break;
 
             if (isIdleTimeoutElapsed()) {
-                Debug.println("Idle timeout - going to sleep");
-                uiState = MachineState::Sleep;
+                //Debug.println("Idle timeout - going to sleep");
+                //uiState = MachineState::Sleep;
+                setPowerControl(false); // Turn machine off
                 break;
             }
 
