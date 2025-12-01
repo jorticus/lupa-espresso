@@ -1,0 +1,44 @@
+Reference,Qty,Value,DNP,Exclude from BOM,Exclude from Board,Footprint,Datasheet
+C1,,,,,,,
+C6,,,,,,,
+C8,1,820uF 6.3V,,,,Capacitor_THT:CP_Radial_D8.0mm_P3.50mm,~
+C9,1,1uF,,,,Capacitor_SMD:C_0603_1608Metric,~
+C10,1,1nF 400V Y,,,,Capacitor_THT:C_Rect_L7.0mm_W2.5mm_P5.00mm,~
+C12,1,100nF X2,,,,Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm,~
+C13,1,100uF,,,,Capacitor_THT:CP_Radial_D5.0mm_P2.50mm,~
+C14,1,10uF 450V,,,,Capacitor_THT:CP_Radial_D10.0mm_P5.00mm,https://4donline.ihs.com/images/VipMasterIC/IC/SCMP/SCMP-S-A0009021038/SCMP-S-A0009021038-1.pdf?hkey=6D3A4C79FDBF58556ACFDE234799DDF0
+D1,1,SMBJ7A,,,,Diode_SMD:D_SMB,https://www.st.com/resource/en/datasheet/sm6t.pdf
+F1,1,1A 250V,,,,Fuse:Fuse_Schurter_UMZ250,https://www.farnell.com/datasheets/3975405.pdf
+FB1,1,Ferrite,,,,Resistor_SMD:R_0603_1608Metric,~
+J1,1,LEVER,,,,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,~
+J2,1,POWER_BTN,,,,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,~
+J3,1,LOW_WATER,,,,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,~
+J4,1,FLOW1,,,,Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical,~
+J5,1,FLOW2,,,,Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical,~
+J6,1,PRESSURE1,,,,Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical,~
+J7,1,PRESSURE2,,,,Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical,~
+J8,1,LCD_L,,,,Connector_JST:JST_XH_B8B-XH-A_1x08_P2.50mm_Vertical,~
+J9,1,LCD_R,,,,Connector_JST:JST_XH_B8B-XH-A_1x08_P2.50mm_Vertical,~
+J10,1,LED_PWR,,,,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,~
+J11,1,MAX31865,,,,Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical,~
+J12,1,POWER,,,,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,~
+J13,1,PROG,,,,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical_SMD_Pin1Left,~
+J14,1,BOILER_SSR,,,,Connector_JST:JST_XH_S2B-XH-A_1x02_P2.50mm_Horizontal,~
+J15,,,,,,,
+J16,1,Mains,,,,TerminalBlock_Altech:Altech_AK300_1x03_P5.00mm_45-Degree,~
+J17,1,Fill Solenoid,,,,TerminalBlock_Altech:Altech_AK300_1x02_P5.00mm_45-Degree,~
+J18,1,Pump,,,,TerminalBlock_Altech:Altech_AK300_1x02_P5.00mm_45-Degree,~
+J19,1,Water Level,,,,Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical,~
+L1,1,4.7mH,,,,Inductor_THT:L_Radial_D6.0mm_P4.00mm,~
+L2,1,4.7uH 2.2A,,,,Inductor_SMD:L_6.3x6.3_H3,~
+Q1,1,2N7002,,,,Package_TO_SOT_SMD:SOT-23,https://www.onsemi.com/pub/Collateral/NDS7002A-D.PDF
+R1,1,10R,,,,Resistor_SMD:R_0603_1608Metric,~
+R2,,,,,,,
+R5,,,,,,,
+R8,,,,,,,
+R16,1,12R 3W,,,,Resistor_THT:R_Axial_DIN0516_L15.5mm_D5.0mm_P5.08mm_Vertical,https://www.farnell.com/datasheets/3110733.pdf
+R22,,,,,,,
+RV1,1,MOV,,,,Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm,
+U1,1,ESP32-WROOM-32U,,,,RF_Module:ESP32-WROOM-32U,https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32d_esp32-wroom-32u_datasheet_en.pdf
+U2,1,VTX-215-005-003,,,,Visclib:SMPS-VTX-215-005-003,https://www.farnell.com/datasheets/3621164.pdf
+U3,,,,,,,
