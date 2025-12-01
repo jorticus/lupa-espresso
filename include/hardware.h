@@ -91,3 +91,5 @@
 
 #define LEDC_CH_DISPLAY (0)
 #define LEDC_CH_PUMP    (2)
+
+#define UART_DEBUG_BAUD (115200)

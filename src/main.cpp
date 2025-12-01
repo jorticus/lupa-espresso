@@ -34,8 +34,11 @@
 // NOTE: WiFiClient default timeout is 3 seconds, WDT should probably be longer than this.
 const uint32_t WDT_TIMEOUT_SEC = 4;
 
-Adafruit_MAX31865   rtd1(MAX1_CS, &Display::getSPIInstance());
-Adafruit_MAX31865   rtd2(MAX2_CS, &Display::getSPIInstance());
+// MAX31865 shares SPI bus with TFT
+extern SPIClass spi; // Defined in TFT_eSPI\Processors\TFT_eSPI_ESP32.c
+extern TFT_eSPI tft; // Defined in Display.cpp
+Adafruit_MAX31865   rtd1(MAX1_CS, &spi);
+Adafruit_MAX31865   rtd2(MAX2_CS, &spi);
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
 
@@ -89,7 +92,7 @@ bool handle_reset() {
  * Only initialize subsystems required for setting up OTA update and UI feedback
 */
 void initCritical() {
-    Serial.begin(9600);
+    Serial.begin(UART_DEBUG_BAUD);
 
     IO::initGpio();
     DebugLogger::init();

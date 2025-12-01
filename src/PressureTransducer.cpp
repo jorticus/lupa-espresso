@@ -52,7 +52,6 @@ pressure_sample_t PressureTransducer::readSample() {
 
     if (readRegister(REGISTER_PRESSURE_VALUE, buf, sizeof(buf)))
     {
-
         int raw_pressure = (buf[0] << 16) | (buf[1] << 8) | buf[2];
         if (raw_pressure > 0x800000)
         raw_pressure -= 0x1000000;
@@ -75,7 +74,7 @@ bool PressureTransducer::readRegister(uint8_t reg, uint8_t* buf, size_t len) {
     Wire.beginTransmission(i2c_addr);
     Wire.write(reg);
     if (Wire.endTransmission() != 0) {
-        Debug.println("NACK from pressure");
+        // Debug.println("NACK from pressure");
         return false;
     }
 

@@ -97,14 +97,13 @@ public:
   void startSample();
   bool isSampleReady();
   uint16_t readSample();
+  uint8_t readRegister8(uint8_t addr);
+  uint16_t readRegister16(uint8_t addr);
 
 private:
   Adafruit_SPIDevice spi_dev;
 
   void readRegisterN(uint8_t addr, uint8_t buffer[], uint8_t n);
-
-  uint8_t readRegister8(uint8_t addr);
-  uint16_t readRegister16(uint8_t addr);
 
   void writeRegister8(uint8_t addr, uint8_t reg);
 };

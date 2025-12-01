@@ -28,9 +28,13 @@
 
 //#define SPI_FREQUENCY  27000000
 #define SPI_FREQUENCY  80000000
-//#define USE_HSPI_PORT
+// #define SPI_FREQUENCY  1000000
+
+#define USE_HSPI_PORT  //SPI bus normally mapped to pins 12 - 15, but can be matrixed to any pins
+// #define USE_VSPI_PORT
 
 #define TFT_WIDTH 240
 #define TFT_HEIGHT 240
+
 
 //extern int tft_cs_pin;

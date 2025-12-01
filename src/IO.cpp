@@ -335,7 +335,6 @@ void setHeatPower(float duty) {
 
     // Immediately turn off boiler, don't wait for next PWM cycle
     if (duty <= 0.0f) {
-        Debug.println("HEAT Duty 0%");
         setHeat(false);
     }
 }

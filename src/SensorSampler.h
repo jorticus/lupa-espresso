@@ -20,11 +20,11 @@ namespace SensorSampler {
 
 // Accessors
 
-    /// @brief Current boiler temperature
+    /// @brief Current heat exchanger (HX) temperature
     /// @return Temperature, in degC
     float getTemperature();
 
-    /// @brief Current boiler temperature
+    /// @brief Current boiler temperature. This shall be greater or equal to the HX temperature.
     /// @return Temperature, in degC
     float getTemperature2();
 

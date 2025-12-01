@@ -201,6 +201,14 @@ void processControlLoop()
         IO::setHeatPower(0.0f);
     }
     else {
+        // Regulate the heat exchange (HX) loop temperature by applying PID
+        // to the HX temperature sensor.
+        // Optionally add a differential term from the main boiler temperature
+        // sensor to help respond quicker (since the main boiler is closer to the heating element).
+        // Typically there is about a 5C difference between HX and the boiler.
+
+
+        // TODO: Temperature2 should be optional
         float pid_input = SensorSampler::getTemperature(); // HX
         float pid_input_2 = SensorSampler::getTemperature2(); // Boiler
 

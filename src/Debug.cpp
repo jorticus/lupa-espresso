@@ -1,4 +1,5 @@
 #include "Debug.h"
+#include "hardware.h"
 #include <TelnetSpy.h>
 
 //static WiFiServer server;
@@ -16,7 +17,7 @@ int custom_vprintf(const char* str, va_list l) {
 
 
 void DebugLogger::init() {
-    telnet.begin(9600);
+    telnet.begin(UART_DEBUG_BAUD);
     telnet.setWelcomeMsg("Connected to LUPA\n");
     telnet.setRejectMsg("Connection rejected\n");
     //telnet.setBufferSize(3000);
