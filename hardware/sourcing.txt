@@ -1,0 +1,29 @@
+High voltage parts:
+https://nz.element14.com/vigortronix/vtx-215-005-003/power-supply-ac-dc-3-3v-1a/dp/3870399
+https://nz.element14.com/multicomp-pro/mcksk450m100g17s/capacitor-alu-elec-10uf-450v-radial/dp/2610819
+https://nz.element14.com/panasonic-electric-works/aqh1213aj/ssr-600v-0-6a/dp/2095712
+https://nz.element14.com/schurter/3404-2416-11/fuse-smd-umz-250-1a/dp/1829461
+https://nz.element14.com/multicomp-pro/mor03sj0150a19/res-15r-5-3w-axial-metal-oxide/dp/1357899
+https://nz.element14.com/kemet/a750kk827m0jaae016/cap-820-f-6-3v-20/dp/2614008
+
+ESP32:
+https://www.lcsc.com/product-detail/C328062.html?s_z=n_ESP32-WROOM-32U
+
+Modules:
+https://www.aliexpress.com/item/1005006704297164.html MAX RTD temperature converter module
+https://www.aliexpress.com/item/1005004962049197.html 2x Round Display
+https://www.aliexpress.com/item/4000411199411.html 2x Water flow sensor
+https://www.aliexpress.com/item/1005004349225653.html 1x pressure sensor: G1/8 thread, 0-12Bar, I2C Output (or other thread to suit your machine)
+https://www.aliexpress.com/item/32954468941.html 2x RTD temperature sensors:
+    1x PT100, L 50mm, 1/4"
+    1x PT100, L 100mm, 1/4"
+
+Connectors:
+https://nz.element14.com/multicomp-pro/mp001801/wtb-conn-header-8pos-1row-2-5mm/dp/3287578
+https://nz.element14.com/multicomp-pro/mp001809/wtb-conn-header-r-a-2pos-1row/dp/3287588
+https://nz.element14.com/multicomp-pro/mp001797/wtb-conn-header-4pos-1row-2-5mm/dp/3287574
+https://nz.element14.com/multicomp-pro/mp001838/contact-socket-crimp-28-22awg/dp/3287624
+https://nz.element14.com/multicomp-pro/mp001795/wtb-conn-header-2pos-1row-2-5mm/dp/3287572
+https://nz.element14.com/multicomp-pro/mp001829/wtb-housing-rcpt-8pos-1row-2-5mm/dp/3287611
+https://nz.element14.com/multicomp-pro/mp001823/wtb-housing-rcpt-2pos-1row-2-5mm/dp/3287603
+https://nz.element14.com/multicomp-pro/mp001825/wtb-housing-rcpt-4pos-1row-2-5mm/dp/3287605
