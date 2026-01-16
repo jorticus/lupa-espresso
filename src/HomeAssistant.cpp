@@ -143,6 +143,7 @@ void onConnect() {
 #include <esp_task_wdt.h>
 const uint32_t WDT_TIMEOUT_SEC = 4;
 
+#if 0 // TODO: Migrate to Arduino 3.x
 static EventGroupHandle_t _arduino_event_group = NULL;
 
 static void wifi_dns_found_callback(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
@@ -152,6 +153,7 @@ static void wifi_dns_found_callback(const char *name, const ip_addr_t *ipaddr, v
     }
     xEventGroupSetBits(_arduino_event_group, WIFI_DNS_DONE_BIT);
 }
+#endif
 
 /// @brief Resolve a hostname by querying DNS, with timeout
 /// @details Reimplementation of WiFiGeneric::hostByName that lets you specify a timeout
@@ -164,6 +166,7 @@ static bool hostByName(const char* hostname, IPAddress& result, uint32_t timeout
         ip_addr_t addr;
         result = static_cast<uint32_t>(0);
 
+#if 0 // TODO: Migrate to Arduino 3.x
         if (!_arduino_event_group) {
             _arduino_event_group = xEventGroupCreate();
             xEventGroupSetBits(_arduino_event_group, WIFI_DNS_IDLE_BIT);
@@ -196,6 +199,7 @@ static bool hostByName(const char* hostname, IPAddress& result, uint32_t timeout
                 Debug.println("ERROR: DNS lookup timeout");
             }
         }
+#endif
     }
 
     return (uint32_t)result != 0;

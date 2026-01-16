@@ -1,3 +1,5 @@
+#include "esp32-hal-touch-legacy.h"
+
 #include <Arduino.h>
 #include <Wire.h>
 #include "IO.h"
@@ -5,7 +7,11 @@
 #include "StateMachine.h"
 #include "hardware.h"
 #include "button.h"
-#include "driver/touch_sensor.h"
+
+#define CONFIG_TOUCH_SUPPRESS_DEPRECATE_WARN 1
+#include <driver/touch_sensor.h>
+// #include <driver/touch_sens.h>
+
 #include "config.h"
 
 // Temporary: For lever pull detection
@@ -122,8 +128,10 @@ void initPwm() {
     // Initialize touch sensor input, used to detect boiler water level
     // https://github.com/ESP32DE/esp-iot-solution-1/blob/master/documents/touch_pad_solution/touch_sensor_design_en.md
     touchSetCycles(0xF000, 0xF000);
-    touchRead(T0);
+    touchRead(PIN_IN_WATER_FULL);
     touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
+
+
 #endif
 
 
@@ -136,8 +144,11 @@ void initPwm() {
     // uint8_t group=(chan/8), timer=((chan/2)%4);
     //ledcSetup(LEDC_CH_PUMP, 5, 8);  // CH1 5Hz, Min duty 20
     //ledcSetup(LEDC_CH_PUMP, 10, 8); // CH1 10Hz, Min duty 10  -- this seems to be unstable with PID loop
-    ledcSetup(LEDC_CH_PUMP, 15, 8);  // CH1 15Hz, Min duty 67
-    ledcAttachPin(PIN_OUT_PUMP, LEDC_CH_PUMP);
+   
+    // ledcSetup(LEDC_CH_PUMP, 15, 8);  // CH1 15Hz, Min duty 67
+    // ledcAttachPin(PIN_OUT_PUMP, LEDC_CH_PUMP);
+    ledcAttachChannel(PIN_OUT_PUMP, 15, 8, LEDC_CH_PUMP); // CH1 15Hz, Min duty 67
+
     ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
     s_isPwmInitialized = true;
 #endif
@@ -155,13 +166,14 @@ void readWaterLevel() {
         switch (cycle++) {
             case 0: // Begin sampling touch channel
                 //touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER); 
-                touch_pad_filter_start(10);
+                touch_pad_filter_enable();
+                // touch_pad_filter_start(10);
                 touch_pad_sw_start();
                 break;
 
             case 1: // Read touch channel and turn off sampling
             {
-                auto water_level_raw = touchRead(T0);
+                auto water_level_raw = touchRead(PIN_IN_WATER_FULL);
                 //Debug.printf("WaterLevel: %d\n", water_level_raw);
 
                 if (water_level_raw > water_threshold_high) {
@@ -185,7 +197,8 @@ void readWaterLevel() {
 
                 //Debug.println("Stop touch sample");
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
-                touch_pad_filter_stop();
+                // touch_pad_filter_stop();
+                touch_pad_filter_disable();
                 cycle = 0;
                 break;
             }

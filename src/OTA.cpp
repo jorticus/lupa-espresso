@@ -92,7 +92,7 @@ void initOTA() {
         Debug.println("OTA Initiated");
 
         esp_task_wdt_reset();
-        esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true);
+        // esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true); // TODO: Migrate
 
         // TODO: Communicate state to UI task. Cannot render here without causing issues...
         //uiRenderFirmwareUpdate(OtaState::Begin, 0);

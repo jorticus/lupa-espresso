@@ -1,7 +1,7 @@
 #pragma once
 
 /// @brief Handles WiFi network connection
-namespace Network {
+namespace Net {
 
     /// @brief Set up and connect to a WiFi network
     void initWiFi();

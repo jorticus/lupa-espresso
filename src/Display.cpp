@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
+#include <esp32-hal-ledc.h>
 
 #include "Display.h"
 #include "Debug.h"
@@ -50,9 +51,11 @@ void initDisplay() {
     backlight_en = false;
 
     digitalWrite(TFT_BL, LOW);
-    ledcSetup(LEDC_CH_DISPLAY, 4000, 8); // CH0 4kHz 8bit resolution
-    ledcAttachPin(TFT_BL, LEDC_CH_DISPLAY);
-    ledcWrite(LEDC_CH_DISPLAY, 0);
+    // ledcSetup(LEDC_CH_DISPLAY, 4000, 8); // CH0 4kHz 8bit resolution
+    // ledcAttachPin(TFT_BL, LEDC_CH_DISPLAY);
+    ledcAttachChannel(TFT_BL, 4000, 8, LEDC_CH_DISPLAY);
+    // ledcWrite(LEDC_CH_DISPLAY, 0);
+    ledcWriteChannel(LEDC_CH_DISPLAY, 0);
 
     turnOff();
 }

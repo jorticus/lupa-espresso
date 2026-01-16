@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 /// @brief Helper class for ValueArray
 /// @details This allows you to reference ValueArray<T,N> without knowing N up-front.

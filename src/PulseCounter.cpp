@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include "PulseCounter.h"
 #include "Debug.h"
+
+#define CONFIG_GPTIMER_SUPPRESS_DEPRECATE_WARN 1
 #include <driver/timer.h>
 #include <driver/pcnt.h>
 #include <esp_intr_alloc.h>
@@ -88,7 +90,7 @@ void IRAM_ATTR PulseCounter::onPinChange() {
 
     if (delta > MIN_TICK_DELTA_USEC && delta < MAX_TICK_DELTA_USEC) {
         _timeDelta += delta;
-        _timeCount++;
+        _timeCount += 1;
 
         if (_timeDelta > _sampleWindowUs) {
             _isSampleReady = true;

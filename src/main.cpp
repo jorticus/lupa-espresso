@@ -23,7 +23,7 @@
 #include "PressureControl.h"
 #include "Display.h"
 #include "UI.h"
-#include "Network.h"
+#include "Net.h"
 #include "OTA.h"
 #include "HomeAssistant.h"
 #include "Panic.h"
@@ -98,7 +98,7 @@ void initCritical() {
     DebugLogger::init();
 
     Display::initDisplay();
-    Network::initWiFi();
+    Net::initWiFi();
     OTA::initOTA();
 }
 
@@ -115,9 +115,9 @@ void taskNetworkFunc(void* ctx) {
 
     while (true) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
-        Network::handle();
+        Net::handle();
 
-        if (Network::isConnected())
+        if (Net::isConnected())
         {
             // TODO: This causes problems when activating OTA...
             OTA::handle(); // May block
@@ -215,9 +215,18 @@ void initSystem() {
  * Main setup entrypoint
 */
 void setup() {
-    // Disable watchdog during init to give system time to boot.
-    // The WiFi especially can take a significant amount of time to connect.
-    esp_task_wdt_init(10, false);
+    // TODO: Migrate
+    // // Disable watchdog during init to give system time to boot.
+    // // The WiFi especially can take a significant amount of time to connect.
+    // // esp_task_wdt_init(10, false);
+    // esp_task_wdt_config_t wdt = {
+    //     .timeout_ms = 10000,
+    //     .idle_core_mask = 1, // TODO??
+    //     .trigger_panic = false
+    // };
+    // esp_task_wdt_init(&wdt);
+
+    // TODO: USB-CDC port not enumerating.. (Port Reset Failed)
 
     initCritical();
 
@@ -232,7 +241,7 @@ void setup() {
         State::setFault(State::FaultState::FailsafeRecovery);
         return;
     }
-#if defined(FAILSAFE_RECOVERY)
+#if defined(FAILSAFE_RECOVERY) || 1
     // Building with this flag set will always enter recovery mode.
     State::setFault(State::FaultState::FailsafeRecovery);
     return;
@@ -241,9 +250,11 @@ void setup() {
 
     initSystem();
 
-    // Enable watchdog timer
-    esp_task_wdt_init(WDT_TIMEOUT_SEC, true);
-    esp_task_wdt_add(NULL); //add current thread to WDT watch
+    // // Enable watchdog timer
+    // wdt.timeout_ms = WDT_TIMEOUT_SEC * 1000UL;
+    // wdt.trigger_panic = true;
+    // // esp_task_wdt_init(WDT_TIMEOUT_SEC, true);
+    // esp_task_wdt_add(NULL); //add current thread to WDT watch
 
     Debug.println("Done!");
 }
@@ -260,9 +271,9 @@ void loop()
     // This ensures the system can continue to receive firmware updates.
     if (s_failsafe) {
         IO::process();
-        Network::handle();
+        Net::handle();
 
-        if (Network::isConnected())
+        if (Net::isConnected())
         {
             OTA::handle();
             DebugLogger::process();

@@ -1,5 +1,6 @@
 #pragma once
 
+#define CONFIG_PCNT_SUPPRESS_DEPRECATE_WARN 1
 #include <driver/pcnt.h>
 
 /// @brief Interface for counting pulses using ESP32 peripherals

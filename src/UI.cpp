@@ -8,7 +8,7 @@
 #include "HeatControl.h"
 #include "IO.h"
 #include "Debug.h"
-#include "Network.h"
+#include "Net.h"
 #include "Images.h"
 #include "value_array.h"
 #include "secrets.h"
@@ -53,10 +53,10 @@ void uiGetRadialCoords(int32_t r, float angle, int32_t *x, int32_t *y) {
 
 void uiRenderWiFiStatus(GfxCanvas& gfx, int32_t x, int32_t y) {
 
-    if (Network::isConnected()) {
+    if (Net::isConnected()) {
         uiRenderImageCentered(gfx, x, y, ico_wifi_connected_16px, TFT_WHITE);
     }
-    else if (Network::isConnecting()) {
+    else if (Net::isConnecting()) {
         // Pulsing color animation
         float f = sinf((millis() * 0.5f) * deg2rad + PI) * 0.5f + 0.5f;
         int16_t c = f*127.0f + 127.0f;
@@ -648,9 +648,9 @@ void uiRenderBackground() {
 void render() {
     auto t1 = millis();
 
-    if (uiState == MachineState::Off && power_off_anim == 0) {
-        return;
-    }
+    // if (uiState == MachineState::Off && power_off_anim == 0) {
+    //     return;
+    // }
 
     uiRenderBackground();
 

@@ -7,7 +7,7 @@
 
 using namespace Display;
 
-namespace Network
+namespace Net
 {
 
 static int s_reconnectAttempts = 0;
