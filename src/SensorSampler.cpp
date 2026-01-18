@@ -20,8 +20,9 @@ extern Adafruit_MAX31865   rtd1;
 extern Adafruit_MAX31865   rtd2;
 extern PressureTransducer  pressure;
 
+#if defined(LUPA_V1)
 volatile bool g_isWaterTankLow = false;
-volatile bool g_isTemperatureSensorIdle = true;
+#endif
 
 namespace SensorSampler {
 
@@ -34,7 +35,7 @@ ValueArray<float, numSamples> flowSamples;
 
 static int waterTankDebounce = 0;
 
-static bool isRtdAvailable = false;
+static bool isTemperatureAvailable = false;
 static bool isPressureAvailable = false;
 static bool isFlowAvailable = false;
 
@@ -138,19 +139,21 @@ bool isMaxSampleReady() {
 static void onSensorTimer(TimerHandle_t timer) {
     auto t1 = millis();
 
-    // As long a the timer interval is greater than ~50ms, we should have a valid sample by now
-    auto sample = pressure.readSample();
-    if (sample.is_valid) {
-        filter_pressure.add(sample.pressure);
+    if (isPressureAvailable) {
+        // As long a the timer interval is greater than ~50ms, we should have a valid sample by now
+        auto sample = pressure.readSample();
+        if (sample.is_valid) {
+            filter_pressure.add(sample.pressure);
+        }
+        else {
+            filter_pressure.add(0);
+        }
+        if (filter_pressure.isReady()) {
+            value_pressure = filter_pressure.get() * 0.0001f;
+            is_valid_pressure = sample.is_valid;
+        }
+        pressure.startSample();
     }
-    else {
-        filter_pressure.add(0);
-    }
-    if (filter_pressure.isReady()) {
-        value_pressure = filter_pressure.get() * 0.0001f;
-        is_valid_pressure = sample.is_valid;
-    }
-    pressure.startSample();
 
     auto t2 = millis();
     auto td = (t2 - t1);
@@ -189,35 +192,38 @@ static void onTemperatureTimer(TimerHandle_t timer) {
 
     auto t1 = millis();
 
-    // MAX chip is configured for an automatic 60Hz sample rate.
-    // Since we're only sampling at ~10Hz, we should always have a sample available.
-    if (rtd1.isSampleReady()) {
-        auto raw = rtd1.readSample();
-        if (raw > 0 && raw < 0x7000) {//0x7FFF) {
-            filter_temperature_1.add(raw);
+    if (isTemperatureAvailable) {
+        // MAX chip is configured for an automatic 60Hz sample rate.
+        // Since we're only sampling at ~10Hz, we should always have a sample available.
+        if (rtd1.isSampleReady()) {
+            auto raw = rtd1.readSample();
+            if (raw > 0 && raw < 0x7000) {//0x7FFF) {
+                filter_temperature_1.add(raw);
 
-            // auto unfiltered_temp = calculateRtdTemperature(raw);
-            // if (unfiltered_temp > 200.0f) {
-            //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
-            // }
+                // auto unfiltered_temp = calculateRtdTemperature(raw);
+                // if (unfiltered_temp > 200.0f) {
+                //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+                // }
 
-            if (filter_temperature_1.isReady()) {
-                float raw_filtered = filter_temperature_1.get();
-                auto temperature = calculateRtdTemperature(raw_filtered);
-                if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
-                    value_temperature_1 = temperature;
-                    is_valid_temperature_1 = true;
+                if (filter_temperature_1.isReady()) {
+                    float raw_filtered = filter_temperature_1.get();
+                    auto temperature = calculateRtdTemperature(raw_filtered);
+                    if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+                        value_temperature_1 = temperature;
+                        is_valid_temperature_1 = true;
+                    }
+                    else {
+                        Debug.printf("INVALID RTD1 T: %.2f (0x%x)\n", temperature, raw_filtered);
+                        is_valid_temperature_1 = false;
+                    }
                 }
-                else {
-                    Debug.printf("INVALID RTD1 T: %.2f (0x%x)\n", temperature, raw_filtered);
-                    is_valid_temperature_1 = false;
-                }
+            } else {
+                // Debug.printf("INVALID RTD1 RAW: 0x%x\n", raw);
             }
-        } else {
-            // Debug.printf("INVALID RTD1 RAW: 0x%x\n", raw);
         }
     }
 
+#if defined(LUPA_V1)
     // This GPIO (34) is cursed - it MUST be read here, due to an inexplicable effect from the MAX RTD chip.
     // Before RTD1, it always reads open. After RTD2, it always reads closed.
     // Outside of this loop, it will be unstable.
@@ -230,107 +236,110 @@ static void onTemperatureTimer(TimerHandle_t timer) {
         if (waterTankDebounce > 0) waterTankDebounce--;
         else g_isWaterTankLow = false;
     }
+#endif
 
-    if (rtd2.isSampleReady()) {
-        auto raw = rtd2.readSample();
-        if (raw > 0 && raw < 0x7000) {//0x7FFF) {
-            filter_temperature_2.add(raw);
+    if (isTemperatureAvailable) {
+        if (rtd2.isSampleReady()) {
+            auto raw = rtd2.readSample();
+            if (raw > 0 && raw < 0x7000) {//0x7FFF) {
+                filter_temperature_2.add(raw);
 
-            // auto unfiltered_temp = calculateRtdTemperature(raw);
-            // if (unfiltered_temp > 200.0f) {
-            //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
-            // }
+                // auto unfiltered_temp = calculateRtdTemperature(raw);
+                // if (unfiltered_temp > 200.0f) {
+                //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+                // }
 
-            if (filter_temperature_2.isReady()) {
-                float raw_filtered = filter_temperature_2.get();
-                auto temperature = calculateRtdTemperature(raw_filtered);
-                if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
-                    value_temperature_2 = temperature;
-                    is_valid_temperature_2 = true;
+                if (filter_temperature_2.isReady()) {
+                    float raw_filtered = filter_temperature_2.get();
+                    auto temperature = calculateRtdTemperature(raw_filtered);
+                    if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+                        value_temperature_2 = temperature;
+                        is_valid_temperature_2 = true;
+                    }
+                    else {
+                        Debug.printf("INVALID RTD2 T: %.2f (0x%x)\n", temperature, raw_filtered);
+                        is_valid_temperature_2 = false;
+                    }
                 }
-                else {
-                    Debug.printf("INVALID RTD2 T: %.2f (0x%x)\n", temperature, raw_filtered);
-                    is_valid_temperature_2 = false;
-                }
+            } else {
+                // Debug.printf("INVALID RTD2 RAW: 0x%x\n", raw);
             }
-        } else {
-            // Debug.printf("INVALID RTD2 RAW: 0x%x\n", raw);
         }
     }
-
-    g_isTemperatureSensorIdle = true;
     
-    // The pulse counter should always have a valid sample, though it runs with its own timer
-    // and may not be aligned to our sample rate.
-    if (PulseCounter1.isSampleReady()) {
-        auto flow1_hz = PulseCounter1.getFrequency();
-        auto flow2_hz = PulseCounter2.getFrequency();
-        if (flow1_hz < 300.0f) {
-            // Use raw unfiltered value for detecting boolean isFlowing,
-            // as this avoids introducing delay
-            if (s_isFlowing && (flow1_hz < 1.0f)) {
-                s_isFlowing = false;
-                //value_flow_volume = 0.0f; // Reset volume
+    if (isFlowAvailable) {
+        // The pulse counter should always have a valid sample, though it runs with its own timer
+        // and may not be aligned to our sample rate.
+        if (PulseCounter1.isSampleReady()) {
+            auto flow1_hz = PulseCounter1.getFrequency();
+            auto flow2_hz = PulseCounter2.getFrequency();
+            if (flow1_hz < 300.0f) {
+                // Use raw unfiltered value for detecting boolean isFlowing,
+                // as this avoids introducing delay
+                if (s_isFlowing && (flow1_hz < 1.0f)) {
+                    s_isFlowing = false;
+                    //value_flow_volume = 0.0f; // Reset volume
+                }
+                else if (!s_isFlowing && (flow1_hz > 5.0f)) {
+                    s_isFlowing = true;
+                }
+                
+                // Conversion of Hz to normalized reading [0.0,1.0]
+                // using a typical reading of 40Hz for maximum flow
+                const float hz_normalized_coeff = 0.025f;
+                
+                // Calibration to ensure f2 == f1 when water 
+                // can only leave via return path and not the grouphead
+                const float f1_to_f2_ratio = 1.111f;
+
+                // Calibration to mL/s
+                // Note: coeff comes from calibrating the total volume, 
+                // so we must also take into account the sample rate of 10Hz 
+                // Note2: Not really sure why 0.5 works tbh, but the reading checks out.
+                const float ml_calib_coeff = 0.5f * 10.0f; 
+                
+                const float f1_coeff = hz_normalized_coeff * ml_calib_coeff;
+                const float f2_coeff = hz_normalized_coeff * ml_calib_coeff * f1_to_f2_ratio;
+                
+                // Calibrate flow readings
+                flow1_hz *= f1_coeff;
+                flow2_hz *= f2_coeff;
+
+                // The flow rate out of the grouphead is the difference between
+                // flow into the system (flow1) minus the flow out of the system (flow2),
+                // though this does not account for filling of the preinfusion chamber.
+                auto diff = (flow1_hz - flow2_hz);
+                //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
+
+                // The combined flowrate is a value between 0.0 and 1.0
+                filter_flowrate.add(diff);
+                if (filter_flowrate.isReady()) {
+                    value_flow_rate = filter_flowrate.get();
+
+                    // V[mL] = R[mL/s] * dt[s]
+                    const float t_delta = (float)temperatureSampleRateMs * 0.001f;
+                    value_flow_volume += (value_flow_rate * (float)t_delta);
+
+                    // // Measure time delta since last reading
+                    // static uint64_t t_flow_last = 0;
+                    // uint64_t t_flow = millis();
+                    // uint64_t t_delta = (t_flow - t_flow_last);
+                    // t_flow_last = t_flow;
+                    // if (t_delta > 1000) {
+                    //     t_delta = t_delta; // Out of range
+                    // }
+                    //value_flow_volume += (value_flow_rate * (float)t_delta * 0.001f);
+
+                    is_valid_flow_rate = true;
+                }
             }
-            else if (!s_isFlowing && (flow1_hz > 5.0f)) {
-                s_isFlowing = true;
+            else {
+                // Ignore spurious reading (repeat sample)
             }
-            
-            // Conversion of Hz to normalized reading [0.0,1.0]
-            // using a typical reading of 40Hz for maximum flow
-            const float hz_normalized_coeff = 0.025f;
-            
-            // Calibration to ensure f2 == f1 when water 
-            // can only leave via return path and not the grouphead
-            const float f1_to_f2_ratio = 1.111f;
-
-            // Calibration to mL/s
-            // Note: coeff comes from calibrating the total volume, 
-            // so we must also take into account the sample rate of 10Hz 
-            // Note2: Not really sure why 0.5 works tbh, but the reading checks out.
-            const float ml_calib_coeff = 0.5f * 10.0f; 
-            
-            const float f1_coeff = hz_normalized_coeff * ml_calib_coeff;
-            const float f2_coeff = hz_normalized_coeff * ml_calib_coeff * f1_to_f2_ratio;
-            
-            // Calibrate flow readings
-            flow1_hz *= f1_coeff;
-            flow2_hz *= f2_coeff;
-
-            // The flow rate out of the grouphead is the difference between
-            // flow into the system (flow1) minus the flow out of the system (flow2),
-            // though this does not account for filling of the preinfusion chamber.
-            auto diff = (flow1_hz - flow2_hz);
-            //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
-
-            // The combined flowrate is a value between 0.0 and 1.0
-            filter_flowrate.add(diff);
-            if (filter_flowrate.isReady()) {
-                value_flow_rate = filter_flowrate.get();
-
-                // V[mL] = R[mL/s] * dt[s]
-                const float t_delta = (float)temperatureSampleRateMs * 0.001f;
-                value_flow_volume += (value_flow_rate * (float)t_delta);
-
-                // // Measure time delta since last reading
-                // static uint64_t t_flow_last = 0;
-                // uint64_t t_flow = millis();
-                // uint64_t t_delta = (t_flow - t_flow_last);
-                // t_flow_last = t_flow;
-                // if (t_delta > 1000) {
-                //     t_delta = t_delta; // Out of range
-                // }
-                //value_flow_volume += (value_flow_rate * (float)t_delta * 0.001f);
-
-                is_valid_flow_rate = true;
-            }
+        } else {
+            is_valid_flow_rate = false;
+            s_isFlowing = false;
         }
-        else {
-            // Ignore spurious reading (repeat sample)
-        }
-    } else {
-        is_valid_flow_rate = false;
-        s_isFlowing = false;
     }
 
     // 100ms per tick
@@ -382,6 +391,10 @@ bool initPressure() {
 }
 
 bool initTemperature() {
+#if defined(LUPA_V2)
+    return false; // TODO: For testing
+#endif
+
     bool initialized = true;
 
     pinMode(MAX_RDY, INPUT);
@@ -478,9 +491,9 @@ bool initFlow() {
 bool initialize() {
     Debug.println("Initialize Sensor Sampler");
 
-    bool isTemperatureAvailable = initTemperature();
-    bool isPressureAvailable = initPressure();
-    bool isFlowAvailable = initFlow();
+    isTemperatureAvailable = initTemperature();
+    isPressureAvailable = initPressure();
+    isFlowAvailable = initFlow();
 
     // NOTE: Do not use auto-reset for the timer,
     // as this may lead to an assert within the stack when it tries to reset the timer.
@@ -512,11 +525,17 @@ void start() {
     xTimerStart(timer2, 0);
     xTimerStart(timer1, 0);
 
-    rtd1.autoConvert(true);
-    rtd2.autoConvert(true);
-    pressure.startSample();
-    PulseCounter1.begin(FLOW1_PULSE_PIN, sampleRateMs);
-    PulseCounter2.begin(FLOW2_PULSE_PIN, sampleRateMs);
+    if (isTemperatureAvailable) {
+        rtd1.autoConvert(true);
+        rtd2.autoConvert(true);
+    }
+    if (isPressureAvailable) {
+        pressure.startSample();
+    }
+    if (isFlowAvailable) {
+        PulseCounter1.begin(FLOW1_PULSE_PIN, sampleRateMs);
+        PulseCounter2.begin(FLOW2_PULSE_PIN, sampleRateMs);
+    }
 }
 
 void stop() {

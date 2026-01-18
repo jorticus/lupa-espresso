@@ -31,7 +31,7 @@
 
 #define USE_HSPI_PORT
 
-#define SPI_FREQUENCY  80000000
+#define SPI_FREQUENCY  40000000
 // #define SPI_FREQUENCY  27000000
 
 // // Optional reduced SPI frequency for reading TFT

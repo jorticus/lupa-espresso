@@ -51,10 +51,7 @@ void initDisplay() {
     backlight_en = false;
 
     digitalWrite(TFT_BL, LOW);
-    // ledcSetup(LEDC_CH_DISPLAY, 4000, 8); // CH0 4kHz 8bit resolution
-    // ledcAttachPin(TFT_BL, LEDC_CH_DISPLAY);
     ledcAttachChannel(TFT_BL, 4000, 8, LEDC_CH_DISPLAY);
-    // ledcWrite(LEDC_CH_DISPLAY, 0);
     ledcWriteChannel(LEDC_CH_DISPLAY, 0);
 
     turnOff();
@@ -103,11 +100,12 @@ void setBrightness(float brightness) {
         
         if (b > 0) {
             // Max duty is 8 bits (0xFF)
-            ledcWrite(LEDC_CH_DISPLAY, cie1931_table[b]);
+            ledcWriteChannel(LEDC_CH_DISPLAY, cie1931_table[b]);
+            // digitalWrite(TFT_BL, HIGH);
         }
         else {
-            ledcWrite(LEDC_CH_DISPLAY, 0);
-            digitalWrite(TFT_BL, LOW);
+            ledcWriteChannel(LEDC_CH_DISPLAY, 0);
+            // digitalWrite(TFT_BL, LOW);
         }
 
         display_brightness = brightness;
@@ -118,8 +116,8 @@ void turnOff() {
     tftClearCanvas();
     tftUpdateDisplay();
 
-    ledcWrite(LEDC_CH_DISPLAY, 0);
-    digitalWrite(TFT_BL, LOW);
+    ledcWriteChannel(LEDC_CH_DISPLAY, 0);
+    // digitalWrite(TFT_BL, LOW);
 }
 
 SPIClass& getSPIInstance() {

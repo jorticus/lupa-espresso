@@ -7,44 +7,42 @@
 // Lever actuator input switch
 // High = Lever open
 // Low  = Lever closed or partially open
-#define PIN_IN_LEVER 21 // Rev1
+#define PIN_IN_LEVER 8
 
 // Water tank low switch
 // High = Water tank is low
 //#define PIN_IN_WATER_LOW 22
-#define PIN_IN_WATER_LOW 34 // Rev1
+#define PIN_IN_WATER_LOW 9
 
 // Power button
-#define PIN_IN_POWER_BTN 23
+#define PIN_IN_POWER_BTN 10
 
 // Water flow pulse sensor input pin
 // 5V-24V
 // Pull-up
 // Flow rate 0.75-1L/min
 // https://www.eptsensor.com/flow-sensor/hall-flow-sensor/fm-hl3012-flow-meter-hall-sensor.html
-#define FLOW1_PULSE_PIN 15
-#define FLOW2_PULSE_PIN 16
+#define FLOW1_PULSE_PIN 11
+#define FLOW2_PULSE_PIN 12
 // Note: D39 has stability issues, do not use for this.
 
 // Boiler tank sensor (capsense/touch)
 // Used for auto-fill logic
-#define PIN_IN_WATER_FULL 4 // Touch0 // Rev1
+#define PIN_IN_WATER_FULL 4 // Touch0
 
 //
 // Output GPIOs
 //
 
 // Boiler heater element output (PWM)
-//#define PIN_OUT_HEAT 5
-#define PIN_OUT_HEAT 17 // Rev1
+#define PIN_OUT_HEAT 13
 
 // Pump output (PWM)
-//#define PIN_OUT_PUMP 17
-#define PIN_OUT_PUMP 2 // Rev1
+#define PIN_OUT_PUMP 14
 
 // Fill boiler solenoid output (On/Off)
 //#define PIN_OUT_FILL_SOLENOID 5
-#define PIN_OUT_FILL_SOLENOID 22 // Rev1
+#define PIN_OUT_FILL_SOLENOID 45
 
 
 //
@@ -52,10 +50,10 @@
 //
 // [0x7F] : Pressure Transducer
 //
-#define I2C_SCL     19
-#define I2C_SDA     18
-//#define I2C_SCL1     19 // Rev1
-#define I2C_SCL2     5 // Rev1, 2nd transducer, shares SDA
+#define I2C_SCL     46
+#define I2C_SDA     47
+//#define I2C_SCL1     46
+#define I2C_SCL2     48 // 2nd transducer, shares SDA
 
 // Pressure Transducer
 // White: SDA
@@ -72,16 +70,16 @@
 
 
 //
-// SPI Bus:
-// - LCD Left
-// - LCD Right
-// - MAX31865 RTD
+// SPI Bus 1 (HSPI)
+// - LCD Left & Right
+// SPI Bus 2 (VSPI)
+// - MAX31865 RTD #1 & #2
 //
 
-#define MAX_RDY     35
+#define MAX_RDY     40
 
-#define MAX1_CS     25
-#define MAX2_CS     0  // Shared with BOOT pin (PU)
+#define MAX1_CS     38
+#define MAX2_CS     39
 
 #define RTD_NOMINAL_RESISTANCE (100)
 #define RTD_REFERENCE_RESISTANCE (430)

@@ -1,20 +1,13 @@
-//#include <array>
 #include <Arduino.h>
-//#include <Adafruit_GFX.h>
-//#include <Adafruit_GC9A01A.h>
-//#include <Arduino_GFX.h>
 #include <Wire.h>
-//#include <Adafruit_SPIDevice.h>
 #include <Adafruit_MAX31865.h>
+#include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <SPIFFS.h>
 #include "secrets.h"
 #include "PressureTransducer.h"
-//#include "PulseCounter.h"
-//#include <TFT_eSPI.h>
 #include "config.h"
 #include "hardware.h"
-//#include "value_array.h"
 #include "SensorSampler.h"
 #include "IO.h"
 #include "Debug.h"
@@ -34,11 +27,22 @@
 // NOTE: WiFiClient default timeout is 3 seconds, WDT should probably be longer than this.
 const uint32_t WDT_TIMEOUT_SEC = 4;
 
-// MAX31865 shares SPI bus with TFT
-extern SPIClass spi; // Defined in TFT_eSPI\Processors\TFT_eSPI_ESP32.c
+extern SPIClass spi; // Defined in TFT_eSPI\Processors\TFT_eSPI_ESP32.c (HSPI)
 extern TFT_eSPI tft; // Defined in Display.cpp
+
+#if defined(LUPA_V1)
+// MAX31865 shares SPI bus with TFT
 Adafruit_MAX31865   rtd1(MAX1_CS, &spi);
 Adafruit_MAX31865   rtd2(MAX2_CS, &spi);
+
+#elif defined(LUPA_V2)
+// MAX31865 on separate SPI bus (VSPI)
+SPIClass spi2(VSPI);
+Adafruit_MAX31865   rtd1(MAX1_CS, &spi2);
+Adafruit_MAX31865   rtd2(MAX2_CS, &spi2);
+
+#endif
+
 PressureTransducer  pressure(PRESSURE_FULL_SCALE);
 
 
@@ -100,6 +104,8 @@ void initCritical() {
     Display::initDisplay();
     Net::initWiFi();
     OTA::initOTA();
+
+    Serial.println("Critical init done");
 }
 
 /**
@@ -189,36 +195,40 @@ void initSystem() {
 
     SensorSampler::start();
 
+
     // Initialize SPIFFS
+    Serial.println("Mount SPIFFS");
     if (!SPIFFS.begin(true)) {
-        Serial.println("An error occurred while mounting SPIFFS");
+        Serial.println("Error mounting SPIFFS");
     }
     
     // Power-on state:
-    //State::setState(State::MachineState::Preheat);
-    State::setState(State::MachineState::Off);
-    //State::setState(State::MachineState::SensorTest);
+    State::setState(State::MachineState::SensorTest);
+    // State::setState(State::MachineState::Off);
+    // State::setState(State::MachineState::Preheat);
 
     // If sensors could not be initialized, indicate fault
     if (State::uiState != State::MachineState::SensorTest && 
        (!isSensorsInitialized))
     {
-        State::setFault(State::FaultState::SensorFailure, "INIT FAILURE");
+        State::setFault(State::FaultState::SensorFailure, "");
     }
 
+    Serial.println("Start tasks");
     xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", TASK_STACK_SIZE, nullptr, 3, &task_core,    CORE1);
     xTaskCreatePinnedToCore(taskNetworkFunc,  "NetTask",  TASK_STACK_SIZE, nullptr, 2, &task_network, CORE1);
     xTaskCreatePinnedToCore(taskRenderUiFunc, "UiTask",   TASK_STACK_SIZE, nullptr, 1, &task_ui,      CORE1);
+
+    Serial.println("System init done");
 }
 
 /**
  * Main setup entrypoint
 */
 void setup() {
-    // TODO: Migrate
-    // // Disable watchdog during init to give system time to boot.
-    // // The WiFi especially can take a significant amount of time to connect.
-    // // esp_task_wdt_init(10, false);
+    // Disable watchdog during init to give system time to boot.
+    // The WiFi especially can take a significant amount of time to connect.
+    // esp_task_wdt_init(10, false);
     // esp_task_wdt_config_t wdt = {
     //     .timeout_ms = 10000,
     //     .idle_core_mask = 1, // TODO??
@@ -226,7 +236,7 @@ void setup() {
     // };
     // esp_task_wdt_init(&wdt);
 
-    // TODO: USB-CDC port not enumerating.. (Port Reset Failed)
+    delay(1000);
 
     initCritical();
 
@@ -241,7 +251,7 @@ void setup() {
         State::setFault(State::FaultState::FailsafeRecovery);
         return;
     }
-#if defined(FAILSAFE_RECOVERY) || 1
+#if defined(FAILSAFE_RECOVERY)
     // Building with this flag set will always enter recovery mode.
     State::setFault(State::FaultState::FailsafeRecovery);
     return;
@@ -250,10 +260,16 @@ void setup() {
 
     initSystem();
 
-    // // Enable watchdog timer
-    // wdt.timeout_ms = WDT_TIMEOUT_SEC * 1000UL;
-    // wdt.trigger_panic = true;
-    // // esp_task_wdt_init(WDT_TIMEOUT_SEC, true);
+    // Enable watchdog timer
+    Serial.println("Enable WDT");
+    esp_task_wdt_config_t wdt = {
+        .timeout_ms = 10000,
+        .idle_core_mask = 1, // ??
+        .trigger_panic = false
+    };
+    wdt.timeout_ms = WDT_TIMEOUT_SEC * 1000UL;
+    wdt.trigger_panic = true;
+    esp_task_wdt_init(&wdt);
     // esp_task_wdt_add(NULL); //add current thread to WDT watch
 
     Debug.println("Done!");
@@ -264,10 +280,10 @@ void setup() {
 */
 void loop()
 {
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();
     taskYIELD();
 
-    // DO NOT MODIFY
+    // Failsafe idle loop
     // This ensures the system can continue to receive firmware updates.
     if (s_failsafe) {
         IO::process();

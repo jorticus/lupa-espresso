@@ -545,7 +545,7 @@ void uiRenderGlobalAnimations() {
         }
 
         float b = 1.0f - ((float)(startup_anim) / (float)anim_steps);
-        Debug.printf("%.1f (%d)\n", b, startup_anim);
+        // Debug.printf("%.1f (%d)\n", b, startup_anim);
         Display::setBrightness(b * CONFIG_FULL_BRIGHTNESS);
 
 //Experimental growing ring animation
@@ -632,8 +632,6 @@ void uiRenderGlobalAnimations() {
 }
 
 void uiRenderBackground() {
-    //tftClearCanvas();
-
     if (uiState == MachineState::Ready) {
         uiRenderImage(gfx_right, 0, 0, bg_coffee_eye);
         uiRenderImage(gfx_left, 0, 0, bg_coffee_eye);
@@ -669,7 +667,7 @@ void render() {
 
     auto t3 = millis();
 
-    //Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
+    Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
 }
 
 void renderFailsafe() {

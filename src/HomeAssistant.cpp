@@ -213,6 +213,7 @@ void HomeAssistant::process() {
     if (!isInitialized)
         return;
 
+#if 0
     // TODO: We should really just stick this into a separate FreeRTOS task
     // to ensure any blocks don't hold up the main loop.
     if (!client.connected()) {
@@ -292,6 +293,7 @@ void HomeAssistant::process() {
     }
 
     client.loop();
+#endif
 }
 
 void HomeAssistant::publishData(const char* topic, const char* payload) {

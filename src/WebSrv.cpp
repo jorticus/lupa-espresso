@@ -108,6 +108,21 @@ static void handleTemperature(AsyncWebServerRequest * req) {
 }
 
 void WebSrv::setup() {
+#if 0 // TODO: Fix crash
+/*
+assert failed: tcp_alloc /IDF/components/lwip/lwip/src/core/tcp.c:1854 (Required to lock TCPIP core functionality!)    a
+
+
+Backtrace: 0x4037d809:0x3fcdc360 0x4037d7d1:0x3fcdc380 0x403848c2:0x3fcdc3a0 0x4203f9cf:0x3fcdc4e0 0x4203fb35:0x3fcdc50s0 0x4200a4d9:0x3fcdc520 0x42018b65:0x3fcdc570 0x42020f23:0x3fcdc590 0x4202187e:0x3fcdc610 0x4037eb7d:0x3fcdc630        
+  #0  0x4037d809 in panic_abort at /home/runner/work/esp32-arduino-lib-builder/esp32-arduino-lib-builder/esp-idf/components/esp_system/panic.c:477
+  #1  0x4037d7d1 in esp_system_abort at /home/runner/work/esp32-arduino-lib-builder/esp32-arduino-lib-builder/esp-idf/components/esp_system/port/esp_system_chip.c:87
+  #2  0x403848c2 in __assert_func at /home/runner/work/esp32-arduino-lib-builder/esp32-arduino-lib-builder/esp-idf/components/newlib/src/assert.c:80  #3  0x4203f9cf in tcp_alloc at /home/runner/work/esp32-arduino-lib-builder/esp32-arduino-lib-builder/esp-idf/components/lwip/lwip/src/core/tcp.c:1854 (discriminator 1)
+  #4  0x4203fb35 in tcp_new_ip_type at /home/runner/work/esp32-arduino-lib-builder/esp32-arduino-lib-builder/esp-idf/components/lwip/lwip/src/core/tcp.c:2010
+  #5  0x4200a4d9 in AsyncServer::begin() at E:/Prog/PlatformIO/lib/AsyncTCP_ID1826/src/AsyncTCP.cpp:1255
+  #6  0x42018b65 in AsyncWebServer::begin() at .pio/libdeps/lupa-espresso-v2/ESPAsyncWebServer/src/WebServer.cpp:119   
+  #7  0x42020f23 in WebSrv::setup() at .pio/libdeps/lupa-espresso-v2/ArduinoJson/src/ArduinoJson/Serialization/JsonSerializerImpl.hpp:86
+  #8  0x4202187e in taskNetworkFunc(void*) at .pio/libdeps/lupa-espresso-v2/ArduinoJson/src/ArduinoJson/Serialization/JsonSerializerImpl.hpp:86
+*/
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         // source: data/index.html
         request->send_P(200, "text/html", data::index_html_bytes, data::index_html_size);
@@ -127,6 +142,7 @@ void WebSrv::setup() {
     server.addHandler(&ws);
 
     server.begin();
+#endif
 }
 
 void WebSrv::process() {

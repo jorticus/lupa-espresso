@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <Adafruit_SPIDevice.h>
 #include "IO.h"
 #include "Debug.h"
 #include "StateMachine.h"
@@ -21,7 +22,11 @@
 #define USE_WATERLEVEL
 
 extern volatile bool g_isWaterTankLow;
-extern volatile bool g_isTemperatureSensorIdle;
+
+#if defined(LUPA_V2)
+extern SPIClass spi;  // HSPI (TFT)
+extern SPIClass spi2; // VSPI
+#endif
 
 // Reading is typically 0 when water is filled,
 // and ~500 when it needs filling
@@ -33,11 +38,12 @@ static bool  s_isHeaterOn = false;
 static float s_heaterPower = 0.0;
 static bool  s_waterLow = false;
 static unsigned long s_boilerInterval = 0;
+static bool s_isFailsafeTriggered = false;
 
 const float PUMP_DUTY_MIN = 67.0f;  // Depends on configured ledc frequency
 const float PUMP_DUTY_MAX = 255.0f;
-const uint8_t PUMP_DUTY_OFF = 0;
-const uint8_t PUMP_DUTY_ON = 0xFF;
+const uint32_t PUMP_DUTY_OFF = 0;
+const uint32_t PUMP_DUTY_ON = ((1<<14)-1);
 
 const unsigned long HEATER_MIN_PERIOD = 100;
 const unsigned long HEATER_PERIOD = 5000;
@@ -71,13 +77,25 @@ void onButtonPress(int pin) {
 /// @brief Reset device into a fail-safe mode
 /// where any outputs are turned off.
 void failsafe() {
+    Debug.println("failsafe");
+
+    pinMode(PIN_OUT_HEAT, OUTPUT);
+    pinMode(PIN_OUT_PUMP, OUTPUT);
+    pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
+
     digitalWrite(PIN_OUT_HEAT, LOW);
     digitalWrite(PIN_OUT_PUMP, LOW);
     digitalWrite(PIN_OUT_FILL_SOLENOID, LOW);
 
-    if (s_isPwmInitialized) {
-        ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
-    }
+// #if CONFIG_ENABLE_PRESSURE_PROFILING
+//     if (s_isPwmInitialized) {
+//         ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
+//     } else {
+//         digitalWrite(PIN_OUT_PUMP, LOW);
+//     }
+// #else
+//     digitalWrite(PIN_OUT_PUMP, LOW);
+// #endif
 
     s_heaterPower = 0.0f;
 }
@@ -116,6 +134,11 @@ void initGpio() {
     // Set callback for power button (debouncd)
     buttons.onButtonPress(onButtonPress);
 
+#if defined(LUPA_V2)
+    // SPI busses
+    // spi2.begin(40, 39, 38, 41); // TODO: GPIO defs
+#endif
+
     // Just to be consistent, set IO into failsafe mode (outputs off)
     failsafe();
 }
@@ -147,7 +170,7 @@ void initPwm() {
    
     // ledcSetup(LEDC_CH_PUMP, 15, 8);  // CH1 15Hz, Min duty 67
     // ledcAttachPin(PIN_OUT_PUMP, LEDC_CH_PUMP);
-    ledcAttachChannel(PIN_OUT_PUMP, 15, 8, LEDC_CH_PUMP); // CH1 15Hz, Min duty 67
+    ledcAttachChannel(PIN_OUT_PUMP, 15, 14, LEDC_CH_PUMP); // CH1 15Hz, Min duty 67
 
     ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
     s_isPwmInitialized = true;
@@ -300,24 +323,12 @@ void process() {
 }
 
 bool isWaterTankLow() {
+#if defined(LUPA_V1)
+    // Workaround for GPIO instability on V1 board
     return g_isWaterTankLow;
-    // static bool last_reading = false;
-
-    // // // For reasons I don't understand, this signal being high
-    // // // causes spurious readings of the water low GPIO.
-    // // // As a workaround, only sample when it is low (sensor ready).
-    // // // This is not ideal since if this remains high for some reason,
-    // // // we will never know if the tank is empty or not.
-    // // if (digitalRead(MAX_RDY) == LOW) {
-    // //     last_reading = (digitalRead(PIN_IN_WATER_LOW) == LOW);
-    // // }
-
-    // if (g_isTemperatureSensorIdle) {
-    //     last_reading = (digitalRead(PIN_IN_WATER_LOW) == LOW);
-    //     g_isTemperatureSensorIdle = false;
-    // }
-    
-    // return last_reading;
+#elif defined(LUPA_V2)
+    return digitalRead(PIN_IN_WATER_LOW);
+#endif
 }
 
 bool isBoilerTankLow() {
@@ -355,6 +366,8 @@ void setHeatPower(float duty) {
 void setHeat(bool en) {
     static bool prev_value = LOW;
 
+    pinMode(PIN_OUT_HEAT, OUTPUT);
+
     if (en) {
         if (en != prev_value) {
             Debug.println("HEAT: ON");
@@ -391,7 +404,7 @@ void setPump(bool en) {
 
 void setPumpDuty(float duty) {
 #if CONFIG_ENABLE_PRESSURE_PROFILING
-    auto iduty = (uint8_t)((float)PUMP_DUTY_MAX * duty);
+    uint32_t iduty = (uint32_t)((float)PUMP_DUTY_MAX * duty);
     Debug.printf("Set pump duty = %d\n", iduty);
 
     if (duty <= 0.0f) {

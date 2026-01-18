@@ -19,12 +19,12 @@ namespace State {
         Ready,
         Fault,
         Brewing,
-        SensorTest,
         FirmwareUpdate,
         Sleep,
         Tuning,
         FillTank,
-        StabilizePressure
+        StabilizePressure,
+        SensorTest,
     };
 
     enum class FaultState {
