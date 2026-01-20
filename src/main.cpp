@@ -13,7 +13,7 @@
 #include "Debug.h"
 #include "StateMachine.h"
 #include "HeatControl.h"
-#include "PressureControl.h"
+#include "BrewControl.h"
 #include "Display.h"
 #include "UI.h"
 #include "Net.h"
@@ -156,7 +156,7 @@ void taskCoreFunc(void* ctx) {
             State::uiState != State::MachineState::Off)
         {
             HeatControl::processControlLoop();
-            PressureControl::processControlLoop();
+            BrewControl::processControlLoop();
         }
 
     }
@@ -191,7 +191,7 @@ void initSystem() {
     bool isSensorsInitialized = SensorSampler::initialize();
 
     HeatControl::initControlLoop();
-    PressureControl::initControlLoop();
+    BrewControl::initControlLoop();
 
     SensorSampler::start();
 
@@ -203,16 +203,20 @@ void initSystem() {
     }
     
     // Power-on state:
-    State::setState(State::MachineState::SensorTest);
+    // State::setState(State::MachineState::UiTest);
+    // State::setState(State::MachineState::SensorTest);
     // State::setState(State::MachineState::Off);
     // State::setState(State::MachineState::Preheat);
+    State::setState(State::MachineState::Brewing);
 
+#if 0
     // If sensors could not be initialized, indicate fault
     if (State::uiState != State::MachineState::SensorTest && 
        (!isSensorsInitialized))
     {
         State::setFault(State::FaultState::SensorFailure, "");
     }
+#endif
 
     Serial.println("Start tasks");
     xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", TASK_STACK_SIZE, nullptr, 3, &task_core,    CORE1);

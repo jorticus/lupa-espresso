@@ -7,7 +7,7 @@
 #include "SensorSampler.h"
 #include "config.h"
 #include "HeatControl.h"
-#include "PressureControl.h"
+#include "BrewControl.h"
 #include "HomeAssistant.h"
 
 namespace State {
@@ -30,6 +30,7 @@ static const char* UiState_Str[] = {
     "Ready",
     "Fault",
     "Brewing",
+    "PostBrew",
     "Sensor Test",
     "Firmware Update",
     "Sleep",
@@ -138,14 +139,13 @@ void beginBrew()
     // Reset flow accumulation
     SensorSampler::resetFlowCounter();
 
-    PressureControl::setProfile(PressureControl::PressureProfile::Manual);
-    PressureControl::start();
+    BrewControl::start();
 }
 
 /// @brief End a brew
 void endBrew()
 {
-    PressureControl::stop();
+    BrewControl::stop();
 
     resetIdleTimer();
 
@@ -156,7 +156,7 @@ void endBrew()
 
     brewStats.total_volume = SensorSampler::getTotalFlowVolume();
 
-#if false
+#if true
     // Switch into steaming mode (only if brew was longer than 10sec)
     if ((brewStats.end_brew_time - brewStats.start_brew_time) > 10000) {
         HeatControl::setProfile(HeatControl::BoilerProfile::Steam);
@@ -259,6 +259,8 @@ void onStateChanged(MachineState lastState, MachineState newState) {
         case MachineState::Brewing:
             beginBrew();
             break;
+        case MachineState::PostBrew:
+            break;
 
         case MachineState::FillTank:
             beginFillTankCycle();
@@ -293,6 +295,8 @@ void onStateChanged(MachineState lastState, MachineState newState) {
 /// @brief Main state machine processing block
 void processState()
 {
+    return; // For testing UI
+
     static MachineState _lastUiState = MachineState::Init;
     if (uiState != _lastUiState) {
         printState(_lastUiState); Debug.print("->"); printState(uiState); Debug.println();
@@ -362,6 +366,7 @@ void processState()
             }
             if (IO::isLeverPulled()) {
                 // (Won't result in a good brew, but allow this for testing / flushing the system)
+                // TODO: How should this behave with dynamic brew profiles? should we force a manual profile?
                 uiState = MachineState::Brewing;
                 break;
             }
@@ -379,9 +384,8 @@ void processState()
             if (detectFaults()) break;
 
             if (isIdleTimeoutElapsed()) {
-                //Debug.println("Idle timeout - going to sleep");
-                //uiState = MachineState::Sleep;
-                setPowerControl(false); // Turn machine off
+                // TODO: This might not be working
+                setPowerControl(false); // Turn machine off after timeout
                 break;
             }
 
@@ -416,14 +420,26 @@ void processState()
 
             stateBrew();
 
+            // If brew profile indicates end of shot, stop brewing
+            if (BrewControl::isProfileComplete()) {
+                endBrew();
+                uiState = MachineState::PostBrew;
+            }
+
             // If lever is released, stop brewing even if profile not finished.
-            // Also stop brewing if the profile completes.
-            // TODO: But how do we stop cycling back when lever is still pulled?
-            if (!IO::isLeverPulled() || PressureControl::isProfileComplete()) {
+            if (!IO::isLeverPulled()) {
                 endBrew();
                 uiState = MachineState::Ready;
             }
             break;
+        }
+
+        case MachineState::PostBrew:
+        {
+            // Hold here until lever released
+            if (!IO::isLeverPulled()) {
+                uiState = MachineState::Ready;
+            }
         }
 
         case MachineState::StabilizePressure:
@@ -466,6 +482,7 @@ void processState()
 
 
         case MachineState::SensorTest:
+        case MachineState::UiTest:
             if (detectFaults()) break;
             break;
 

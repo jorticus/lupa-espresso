@@ -9,7 +9,7 @@
 #include "StateMachine.h"
 #include "IO.h"
 #include "config.h"
-#include "PressureControl.h"
+#include "BrewControl.h"
 #include "MqttParamManager.h"
 #include "Debug.h"
 #include <lwip/dns.h>
