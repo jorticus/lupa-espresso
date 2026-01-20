@@ -387,6 +387,33 @@ void uiRenderStatusRing(GfxCanvas& gfx, const char* message, uint16_t color, uin
     }
 }
 
+void uiRenderFillingAnim(GfxCanvas& gfx) {
+    // Ocean colours
+    const uint16_t ocean = TFT_RGB656(0, 100, 190);
+    const uint16_t ocean_high = TFT_RGB656(90, 170, 235);
+
+    // Base rectangle fills the lower half
+    const int32_t baseY = TFT_HEIGHT / 2;
+    gfx.fillRect(0, baseY, TFT_WIDTH, TFT_HEIGHT - baseY, ocean);
+
+    // Wave parameters
+    unsigned long t = millis();
+    const float amplitude = 16.0f;
+    const float two_pi = 2.0f * PI;
+
+    for (int x = 0; x <= TFT_WIDTH; x++) {
+        float ang = (x * 0.01f) + (t * 0.0005f) * two_pi;
+        int32_t h = sinf(ang) * amplitude - amplitude;
+        gfx.drawLine(x, baseY, x, baseY + h, ocean);
+    }
+
+    const char* message = "FILLING";
+    int16_t tw = gfx.textWidth(message);
+    int16_t th = 14;
+    gfx.setCursor(TFT_WIDTH/2 - tw/2, 40);//TFT_HEIGHT/2 - th/2 - 2*amplitude - 10);
+    gfx.print(message);
+}
+
 void uiRenderFaultRing(GfxCanvas& gfx) {
     const uint32_t ring_w = 10;
     const char* status_str = nullptr;
@@ -441,6 +468,9 @@ void renderRight() {
     unsigned long t = millis();
     const char* status_str = nullptr;
 
+    // Pulse animation
+    ring_w = ring_w_min + 10 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
+
     // Render UI elements for the current state
     switch (uiState) {
         case MachineState::Init:
@@ -448,13 +478,11 @@ void renderRight() {
             break;
 
         case MachineState::Tuning:
-            ring_w = ring_w_min + 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
             uiRenderStatusRing(gfx, "TUNING", TFT_GREENYELLOW, ring_w);
             break;
 
         case MachineState::Preheat:
             // Pulse animation
-            ring_w = ring_w_min + 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
             uiRenderStatusRing(gfx, "WARMING UP", TFT_ORANGERED, ring_w);
             break;
 
@@ -463,11 +491,7 @@ void renderRight() {
             break;
 
         case MachineState::Ready:
-            // Connect animation from Brewing phase
-            if (ring_w > ring_w_min) {
-                ring_w = ring_w_min + 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
-            }
-
+        case MachineState::PostBrew:
             if (brewStats.start_brew_time > 0) {
                 // Show post-brew snapshot graph + brew time
                 uiRenderPostBrewScreen(gfx);
@@ -494,21 +518,16 @@ void renderRight() {
             break;
 
         case MachineState::FillTank:
-            ring_w = 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
-            uiRenderStatusRing(gfx, "FILLING", TFT_YELLOW, ring_w);
+            uiRenderFillingAnim(gfx);
             break;
 
         case MachineState::StabilizePressure:
-            uiRenderPressureGauge(gfx);
-            uiRenderFlowGauge(gfx);
-            uiRenderStatusRing(gfx, "STABILIZING", TFT_YELLOW, 10);
+            // uiRenderPressureGauge(gfx);
+            // uiRenderFlowGauge(gfx);
+            uiRenderStatusRing(gfx, "STABILIZING", TFT_YELLOW, ring_w);
             break;
 
         case MachineState::Sleep:
-
-            // Pulse animation
-            ring_w = 5 + (sinf((t * 0.1f) * deg2rad + PI) * 5.0f);
-
             uiRenderStatusRing(gfx, "ZzZz", TFT_DARKCYAN, ring_w);
             break;
     }
