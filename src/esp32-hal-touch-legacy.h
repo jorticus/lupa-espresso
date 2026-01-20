@@ -20,11 +20,15 @@
 #ifndef MAIN_ESP32_HAL_TOUCH_H_
 #define MAIN_ESP32_HAL_TOUCH_H_
 
+// Workaround: don't include the new touch header, conflicting types
+#define MAIN_ESP32_HAL_TOUCH_NEW_H_
+
 #include "soc/soc_caps.h"
 #include "esp_idf_version.h"
 
 #if 1 //SOC_TOUCH_SENSOR_SUPPORTED
 #if 1 // ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 5, 0) && SOC_TOUCH_SENSOR_VERSION <= 2  // ESP32, ESP32S2, ESP32S3
+// #if defined(IDF_TARGET_ESP32S3)
 
 #ifdef __cplusplus
 extern "C" {

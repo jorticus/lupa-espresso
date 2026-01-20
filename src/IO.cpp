@@ -1,3 +1,4 @@
+
 #include "esp32-hal-touch-legacy.h"
 
 #include <Arduino.h>
@@ -9,8 +10,9 @@
 #include "hardware.h"
 #include "button.h"
 
-#define CONFIG_TOUCH_SUPPRESS_DEPRECATE_WARN 1
-#include <driver/touch_sensor.h>
+#include <driver/touch_sensor_legacy.h>
+// #define CONFIG_TOUCH_SUPPRESS_DEPRECATE_WARN 1
+// #include <driver/touch_sensor.h>
 // #include <driver/touch_sens.h>
 
 #include "config.h"
@@ -189,8 +191,14 @@ void readWaterLevel() {
         switch (cycle++) {
             case 0: // Begin sampling touch channel
                 //touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER); 
+                    
+                #if defined(IDF_TARGET_ESP32S3)
+                // Not available on ESP32?
                 touch_pad_filter_enable();
+                #endif
+
                 // touch_pad_filter_start(10);
+                touch_pad_filter_start(10);
                 touch_pad_sw_start();
                 break;
 
@@ -220,8 +228,11 @@ void readWaterLevel() {
 
                 //Debug.println("Stop touch sample");
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
-                // touch_pad_filter_stop();
+                touch_pad_filter_stop();
+
+                #if defined(IDF_TARGET_ESP32S3)
                 touch_pad_filter_disable();
+                #endif
                 cycle = 0;
                 break;
             }
