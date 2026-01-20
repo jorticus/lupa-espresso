@@ -24,12 +24,12 @@ public:
     float getFrequency();
 
 protected:
-    static void IRAM_ATTR timerIsr();
-    static void IRAM_ATTR pinChangeIsr(void* ctx);
+    static void timerIsr();
+    static void pinChangeIsr(void* ctx);
     static void initTimer(int sampleWindowMs);
 
-    void IRAM_ATTR onTimer();
-    void IRAM_ATTR onPinChange();
+    void onTimer();
+    void onPinChange();
 
     void setSlowMode(bool slow);
 

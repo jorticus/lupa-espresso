@@ -44,8 +44,6 @@ bool PressureTransducer::isSampleReady() {
     return (b & IS_SAMPLING) == 0;
 }
 
-#define PRESSURE_I2C_ADDR 0x7F
-
 pressure_sample_t PressureTransducer::readSample() {
     pressure_sample_t sample = {0};
     uint8_t buf[5];
