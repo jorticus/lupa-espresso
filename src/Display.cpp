@@ -96,7 +96,7 @@ static uint8_t cie1931_table[] = {
 void setBrightness(float brightness) {
     if (brightness != display_brightness) {
         uint8_t b = brightness * 0xFF;
-        Debug.printf("Display Brightness: %d\n", b);
+        // Debug.printf("Display Brightness: %d\n", b);
         
         if (b > 0) {
             // Max duty is 8 bits (0xFF)

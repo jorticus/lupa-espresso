@@ -686,7 +686,7 @@ void render() {
 
     auto t3 = millis();
 
-    Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
+    // Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
 }
 
 void renderFailsafe() {

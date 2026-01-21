@@ -295,8 +295,6 @@ void onStateChanged(MachineState lastState, MachineState newState) {
 /// @brief Main state machine processing block
 void processState()
 {
-    return; // For testing UI
-
     static MachineState _lastUiState = MachineState::Init;
     if (uiState != _lastUiState) {
         printState(_lastUiState); Debug.print("->"); printState(uiState); Debug.println();

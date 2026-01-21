@@ -42,8 +42,8 @@ static bool  s_waterLow = false;
 static unsigned long s_boilerInterval = 0;
 static bool s_isFailsafeTriggered = false;
 
-const float PUMP_DUTY_MIN = 67.0f;  // Depends on configured ledc frequency
-const float PUMP_DUTY_MAX = 255.0f;
+const float PUMP_DUTY_MIN = 67.0f * 256.0f;  // Depends on configured ledc frequency
+const float PUMP_DUTY_MAX = 255.0f * 256.0f;
 const uint32_t PUMP_DUTY_OFF = 0;
 const uint32_t PUMP_DUTY_ON = ((1<<14)-1);
 
@@ -82,22 +82,17 @@ void failsafe() {
     Debug.println("failsafe");
 
     pinMode(PIN_OUT_HEAT, OUTPUT);
-    pinMode(PIN_OUT_PUMP, OUTPUT);
     pinMode(PIN_OUT_FILL_SOLENOID, OUTPUT);
 
     digitalWrite(PIN_OUT_HEAT, LOW);
-    digitalWrite(PIN_OUT_PUMP, LOW);
     digitalWrite(PIN_OUT_FILL_SOLENOID, LOW);
 
-// #if CONFIG_ENABLE_PRESSURE_PROFILING
-//     if (s_isPwmInitialized) {
-//         ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
-//     } else {
-//         digitalWrite(PIN_OUT_PUMP, LOW);
-//     }
-// #else
-//     digitalWrite(PIN_OUT_PUMP, LOW);
-// #endif
+    if (s_isPwmInitialized) {
+        ledcWriteChannel(LEDC_CH_PUMP, PUMP_DUTY_OFF);
+    } else {
+        pinMode(PIN_OUT_PUMP, OUTPUT);
+        digitalWrite(PIN_OUT_PUMP, LOW);
+    }
 
     s_heaterPower = 0.0f;
 }
@@ -155,8 +150,6 @@ void initPwm() {
     touchSetCycles(0xF000, 0xF000);
     touchRead(PIN_IN_WATER_FULL);
     touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
-
-
 #endif
 
 
@@ -192,21 +185,21 @@ void readWaterLevel() {
             case 0: // Begin sampling touch channel
                 //touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER); 
                     
-                #if defined(IDF_TARGET_ESP32S3)
-                // Not available on ESP32?
+                #if defined(CONFIG_IDF_TARGET_ESP32S3)
                 touch_pad_filter_enable();
+                #elif defined(CONFIG_IDF_TARGET_ESP32)
+                // touch_pad_filter_start(10);
                 #endif
 
-                // touch_pad_filter_start(10);
-                touch_pad_filter_start(10);
                 touch_pad_sw_start();
                 break;
 
             case 1: // Read touch channel and turn off sampling
             {
                 auto water_level_raw = touchRead(PIN_IN_WATER_FULL);
-                //Debug.printf("WaterLevel: %d\n", water_level_raw);
+                Debug.printf("Boiler Level Sensor: %d\n", water_level_raw);
 
+#if defined(CONFIG_IDF_TARGET_ESP32)
                 if (water_level_raw > water_threshold_high) {
                     if (fill_counter >= 5) {
                         if (!s_waterLow) {
@@ -225,14 +218,20 @@ void readWaterLevel() {
                     }
                     s_waterLow = false;
                 }
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+                // TODO...
+                Debug.println("***BOILER TANK LEVEL NOT IMPLEMENTED***");
+#endif
 
                 //Debug.println("Stop touch sample");
                 touch_pad_set_fsm_mode(TOUCH_FSM_MODE_SW);
-                touch_pad_filter_stop();
 
-                #if defined(IDF_TARGET_ESP32S3)
+                #if defined(CONFIG_IDF_TARGET_ESP32S3)
                 touch_pad_filter_disable();
+                #elif defined(CONFIG_IDF_TARGET_ESP32)
+                // touch_pad_filter_stop();
                 #endif
+
                 cycle = 0;
                 break;
             }
@@ -419,13 +418,13 @@ void setPumpDuty(float duty) {
     Debug.printf("Set pump duty = %d\n", iduty);
 
     if (duty <= 0.0f) {
-        ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_OFF);
+        ledcWriteChannel(LEDC_CH_PUMP, PUMP_DUTY_OFF);
     }
     else if (duty >= 1.0f) {
-        ledcWrite(LEDC_CH_PUMP, PUMP_DUTY_ON);
+        ledcWriteChannel(LEDC_CH_PUMP, PUMP_DUTY_ON);
     }
     else {
-        ledcWrite(LEDC_CH_PUMP, iduty);
+        ledcWriteChannel(LEDC_CH_PUMP, iduty);
     }
 #endif
 }

@@ -195,19 +195,18 @@ void initSystem() {
 
     SensorSampler::start();
 
-
-    // Initialize SPIFFS
-    Serial.println("Mount SPIFFS");
-    if (!SPIFFS.begin(true)) {
-        Serial.println("Error mounting SPIFFS");
-    }
+    // // Initialize SPIFFS
+    // Serial.println("Mount SPIFFS");
+    // if (!SPIFFS.begin(true)) {
+    //     Serial.println("Error mounting SPIFFS");
+    // }
     
     // Power-on state:
     // State::setState(State::MachineState::UiTest);
     // State::setState(State::MachineState::SensorTest);
-    // State::setState(State::MachineState::Off);
+    State::setState(State::MachineState::Off);
     // State::setState(State::MachineState::Preheat);
-    State::setState(State::MachineState::Brewing);
+    // State::setState(State::MachineState::Brewing);
 
 #if 0
     // If sensors could not be initialized, indicate fault

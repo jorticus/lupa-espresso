@@ -1,5 +1,7 @@
 #pragma once
 
+#include "value_array.h"
+
 /// @brief Boiler heater control loop
 namespace HeatControl {
 
