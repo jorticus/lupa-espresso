@@ -15,7 +15,7 @@
     "mcu": "esp32",
     "variant": "lupa-v1",
     "variants_dir": "boards/variants",
-    "partitions": "boards/partitions-8M.csv"
+    "partitions": "boards/partitions-4M.csv"
   },
   "connectivity": [
     "wifi",
