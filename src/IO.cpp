@@ -177,6 +177,7 @@ void readWaterLevel() {
     // Detect the boiler water level using the touch peripheral
     static unsigned long t_last = 0;
     static unsigned long fill_counter = 0;
+    static touch_value_t last_level_raw = 0;
     static int cycle = 0;
     if ((millis() - t_last) > 500) {
         t_last = millis();
@@ -197,7 +198,10 @@ void readWaterLevel() {
             case 1: // Read touch channel and turn off sampling
             {
                 auto water_level_raw = touchRead(PIN_IN_WATER_FULL);
-                Debug.printf("Boiler Level Sensor: %d\n", water_level_raw);
+                if (water_level_raw != last_level_raw) {
+                    last_level_raw = water_level_raw;
+                    Debug.printf("Boiler Level Sensor: %d\n", water_level_raw);
+                }
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
                 if (water_level_raw > water_threshold_high) {

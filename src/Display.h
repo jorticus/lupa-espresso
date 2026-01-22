@@ -13,7 +13,7 @@ namespace Display {
     extern GfxCanvas gfx_right;
 
     /// @brief Initialize the TFT display
-    void initDisplay();
+    bool initDisplay();
 
     /// @brief Clear the canvas (does not update TFT)
     void tftClearCanvas();

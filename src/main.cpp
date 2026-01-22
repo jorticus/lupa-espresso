@@ -93,19 +93,24 @@ bool handle_reset() {
 
 /**
  * Criticial initialization
- * Only initialize subsystems required for setting up OTA update and UI feedback
+ * Only initialize subsystems required for setting up OTA update and 
+ * ensuring the system hardware is in a safe state
 */
-void initCritical() {
+bool initCritical() {
     Serial.begin(UART_DEBUG_BAUD);
 
     IO::initGpio();
     DebugLogger::init();
 
-    Display::initDisplay();
+    if (!Display::initDisplay()) {
+        return false;
+    }
+
     Net::initWiFi();
     OTA::initOTA();
 
     Serial.println("Critical init done");
+    return true;
 }
 
 /**
@@ -117,7 +122,11 @@ void taskNetworkFunc(void* ctx) {
     Debug.println("Network Task Started");
 
     HomeAssistant::init();
-    WebSrv::setup();
+
+    // TODO: quite memory hungry (~9KB)
+    // We only have ~15KB to work with after the display buffers & MQTT subscriptions,
+    // and we need around 10KB to accept an OTA update
+    // WebSrv::setup();
 
     while (true) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -125,14 +134,13 @@ void taskNetworkFunc(void* ctx) {
 
         if (Net::isConnected())
         {
-            // TODO: This causes problems when activating OTA...
             OTA::handle(); // May block
 
             DebugLogger::process();
 
             HomeAssistant::process();
 
-            WebSrv::process();
+            // WebSrv::process();
         }
     }
 }
@@ -206,7 +214,6 @@ void initSystem() {
     // State::setState(State::MachineState::SensorTest);
     State::setState(State::MachineState::Off);
     // State::setState(State::MachineState::Preheat);
-    // State::setState(State::MachineState::Brewing);
 
 #if 0
     // If sensors could not be initialized, indicate fault
@@ -241,7 +248,10 @@ void setup() {
 
     delay(1000);
 
-    initCritical();
+    if (!initCritical()) {
+        State::setFault(State::FaultState::FailsafeRecovery);
+        return;
+    }
 
     // Enter fail-safe mode if we've encountered a firmware bug,
     // before proceeding further. This allows us to recover via OTA.
@@ -264,15 +274,15 @@ void setup() {
     initSystem();
 
     // Enable watchdog timer
-    Serial.println("Enable WDT");
-    esp_task_wdt_config_t wdt = {
-        .timeout_ms = 10000,
-        .idle_core_mask = 1, // ??
-        .trigger_panic = false
-    };
-    wdt.timeout_ms = WDT_TIMEOUT_SEC * 1000UL;
-    wdt.trigger_panic = true;
-    esp_task_wdt_init(&wdt);
+    // Serial.println("Enable WDT");
+    // esp_task_wdt_config_t wdt = {
+    //     .timeout_ms = 10000,
+    //     .idle_core_mask = 1, // ??
+    //     .trigger_panic = false
+    // };
+    // wdt.timeout_ms = WDT_TIMEOUT_SEC * 1000UL;
+    // wdt.trigger_panic = true;
+    // esp_task_wdt_init(&wdt);
     // esp_task_wdt_add(NULL); //add current thread to WDT watch
 
     Debug.println("Done!");
@@ -285,6 +295,25 @@ void loop()
 {
     // esp_task_wdt_reset();
     taskYIELD();
+
+    // Heap monitor
+    static long t_last = 0;
+    static uint32_t heap_last = 0;
+    if ((millis() - t_last) > 100) {
+        t_last = millis();
+        auto heap = esp_get_free_heap_size();
+        if (heap != heap_last) {
+            int32_t delta = (int32_t)heap - (int32_t)heap_last;
+            Debug.printf("HEAP: %d (%d)\n", heap, delta);
+            heap_last = heap;
+        }
+
+        if (heap < 1024) {
+            Debug.printf("WARNING: LOW MEMORY (%d bytes)\n", heap);
+            State::setFault(State::FaultState::SoftwarePanic, "OOM");
+            delay(500);
+        }
+    }
 
     // Failsafe idle loop
     // This ensures the system can continue to receive firmware updates.

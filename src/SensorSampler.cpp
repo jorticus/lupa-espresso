@@ -35,7 +35,8 @@ ValueArray<float, numSamples> flowSamples;
 
 static int waterTankDebounce = 0;
 
-static bool isTemperatureAvailable = false;
+static bool isTemperature1Available = false;
+static bool isTemperature2Available = false;
 static bool isPressureAvailable = false;
 static bool isFlowAvailable = false;
 
@@ -123,7 +124,7 @@ static bool is_valid_temperature_1 = false;
 static bool is_valid_temperature_2 = false;
 static bool is_valid_flow_rate = false;
 
-static const unsigned long sampleRateMs = 10;
+static const unsigned long sampleRateMs = 20;
 static const unsigned long temperatureSampleRateMs = 100;
 static const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
@@ -147,12 +148,12 @@ static void onSensorTimer(TimerHandle_t timer) {
         }
         else {
             filter_pressure.add(0);
+            Debug.println("Error reading pressure sensor");
         }
         if (filter_pressure.isReady()) {
             value_pressure = filter_pressure.get() * 0.0001f;
             is_valid_pressure = sample.is_valid;
         }
-        pressure.startSample();
     }
 
     auto t2 = millis();
@@ -170,6 +171,10 @@ static void onSensorTimer(TimerHandle_t timer) {
     //     value_flow_rate,
     //     (t2 - t1)
     // );
+
+    if (isPressureAvailable) {
+        pressure.startSample();
+    }
 
     auto interval = sampleRateMs - td;
     if (xTimerStart(timer1, pdMS_TO_TICKS(sampleRateMs)) != pdPASS) {
@@ -192,7 +197,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
 
     auto t1 = millis();
 
-    if (isTemperatureAvailable) {
+    if (isTemperature1Available) {
         // MAX chip is configured for an automatic 60Hz sample rate.
         // Since we're only sampling at ~10Hz, we should always have a sample available.
         if (rtd1.isSampleReady()) {
@@ -238,7 +243,7 @@ static void onTemperatureTimer(TimerHandle_t timer) {
     }
 #endif
 
-    if (isTemperatureAvailable) {
+    if (isTemperature2Available) {
         if (rtd2.isSampleReady()) {
             auto raw = rtd2.readSample();
             if (raw > 0 && raw < 0x7000) {//0x7FFF) {
@@ -390,86 +395,72 @@ bool initPressure() {
     }
 }
 
-bool initTemperature() {
-#if defined(LUPA_V2)
-    return false; // TODO: For testing
-#endif
-
+bool initTemperature(Adafruit_MAX31865& rtd) {
     bool initialized = true;
 
     pinMode(MAX_RDY, INPUT);
     pinMode(MAX1_CS, OUTPUT);
     pinMode(MAX2_CS, OUTPUT);
 
-    auto entries = { std::reference_wrapper<Adafruit_MAX31865>(rtd1), std::reference_wrapper<Adafruit_MAX31865>(rtd2) };
-    int i = 0;
-    for (Adafruit_MAX31865& rtd : entries) {
-        i++;
-        Debug.print("Initialize MAX31865 #"); Debug.println(i);
+    rtd.begin(MAX31865_3WIRE);
+    rtd.enableBias(true);
+    rtd.enable50Hz(true);
+    
+    uint8_t config = rtd.readRegister8(MAX31865_CONFIG_REG);
+    Debug.print("MAX cfg="); Debug.println(config, HEX);
+    if (config == 0xFF || config == 0x00) {
+        Debug.println("ERROR: MAX31865 not detected");
+        return false;
+    }
 
-        rtd.begin(MAX31865_3WIRE);
-        rtd.enableBias(true);
-        rtd.enable50Hz(true);
+    rtd.readRTD();
+    auto fault = rtd.readFault();
+    if (fault) {
+        Debug.print("ERROR: MAX31865 Fault 0x"); Debug.println(fault, HEX);
+        if (fault & MAX31865_FAULT_HIGHTHRESH) {
+            Debug.println("  RTD High Threshold"); 
+        }
+        if (fault & MAX31865_FAULT_LOWTHRESH) {
+            Debug.println("  RTD Low Threshold"); 
+        }
+        if (fault & MAX31865_FAULT_REFINLOW) {
+            Debug.println("  REFIN- > 0.85 x Bias"); 
+        }
+        if (fault & MAX31865_FAULT_REFINHIGH) {
+            Debug.println("  REFIN- < 0.85 x Bias (FORCE- open)"); 
+        }
+        if (fault & MAX31865_FAULT_RTDINLOW) {
+            // Likely means there is a short to ground
+            Debug.println("  RTDIN- < 0.85 x Bias (FORCE- open)"); 
+        }
+        if (fault & MAX31865_FAULT_OVUV) {
+            Debug.println("  Under/Over voltage"); 
+        }
+
+        if (fault & (MAX31865_FAULT_REFINLOW | MAX31865_FAULT_RTDINLOW)) {
+            Debug.println("  RTD wiring issue detected!!");
+        }
+
+        initialized = false;
+    }
+    else {
+        rtd.autoConvert(true);
+
+        // Wait for a sample to come in
+        auto t1 = millis();
+        while (((millis() - t1) < 1000) && (!rtd.isSampleReady()))
+            continue;
         
-        uint8_t config = rtd.readRegister8(MAX31865_CONFIG_REG);
-        Debug.print("MAX cfg="); Debug.println(config, HEX);
-        if (config == 0xFF || config == 0x00) {
+        if (!rtd.isSampleReady()) {
+            Debug.println("ERROR: MAX31865 not ready");
+            // NOTE: This will not detect a missing sensor chip.
+            initialized = false;
+        }
+        else if (rtd.readSample() == 0) {
             Debug.println("ERROR: MAX31865 not detected");
-            initialized = false;
-            break;
-        }
-
-        rtd.readRTD();
-        auto fault = rtd.readFault();
-        if (fault) {
-            Debug.print("ERROR: MAX31865 Fault 0x"); Debug.println(fault, HEX);
-            if (fault & MAX31865_FAULT_HIGHTHRESH) {
-                Debug.println("  RTD High Threshold"); 
-            }
-            if (fault & MAX31865_FAULT_LOWTHRESH) {
-                Debug.println("  RTD Low Threshold"); 
-            }
-            if (fault & MAX31865_FAULT_REFINLOW) {
-                Debug.println("  REFIN- > 0.85 x Bias"); 
-            }
-            if (fault & MAX31865_FAULT_REFINHIGH) {
-                Debug.println("  REFIN- < 0.85 x Bias (FORCE- open)"); 
-            }
-            if (fault & MAX31865_FAULT_RTDINLOW) {
-                // Likely means there is a short to ground
-                Debug.println("  RTDIN- < 0.85 x Bias (FORCE- open)"); 
-            }
-            if (fault & MAX31865_FAULT_OVUV) {
-                Debug.println("  Under/Over voltage"); 
-            }
-
-            if (fault & (MAX31865_FAULT_REFINLOW | MAX31865_FAULT_RTDINLOW)) {
-                Debug.println("  RTD wiring issue detected!!");
-            }
-
-            // return false;
+            // Module not present or not responding with valid data.
             initialized = false;
         }
-        else {
-            rtd.autoConvert(true);
-
-            // Wait for a sample to come in
-            auto t1 = millis();
-            while (((millis() - t1) < 1000) && (!rtd.isSampleReady()))
-                continue;
-            
-            if (!rtd.isSampleReady()) {
-                Debug.println("ERROR: MAX31865 not ready");
-                // NOTE: This will not detect a missing sensor chip.
-                initialized = false;
-            }
-            else if (rtd.readSample() == 0) {
-                Debug.println("ERROR: MAX31865 not detected");
-                // Module not present or not responding with valid data.
-                initialized = false;
-            }
-        }
-
     }
 
     digitalWrite(MAX1_CS, HIGH);
@@ -491,7 +482,14 @@ bool initFlow() {
 bool initialize() {
     Debug.println("Initialize Sensor Sampler");
 
-    isTemperatureAvailable = initTemperature();
+    // RTD probe for main boiler tank
+    Debug.println("Initialize MAX31865 #1");
+    isTemperature1Available = initTemperature(rtd1);
+
+    // RTD probe for HX loop (optional)
+    Debug.println("Initialize MAX31865 #2");
+    isTemperature2Available = initTemperature(rtd2);
+
     isPressureAvailable = initPressure();
     isFlowAvailable = initFlow();
 
@@ -507,7 +505,7 @@ bool initialize() {
         Debug.println("ERROR: Could not allocate SensorSampler timer");
     }
 
-    if (!isTemperatureAvailable) {
+    if (!isTemperature1Available) {
         Debug.println("ERROR: Temperature sensor not available");
     }
     if (!isPressureAvailable) {
@@ -517,7 +515,7 @@ bool initialize() {
         Debug.println("ERROR: Flow sensor not available");
     }
 
-    return (isTemperatureAvailable && isPressureAvailable && isFlowAvailable);
+    return (isTemperature1Available && isPressureAvailable && isFlowAvailable);
 }
 
 void start() {
@@ -525,7 +523,7 @@ void start() {
     xTimerStart(timer2, 0);
     xTimerStart(timer1, 0);
 
-    if (isTemperatureAvailable) {
+    if (isTemperature1Available) {
         rtd1.autoConvert(true);
         rtd2.autoConvert(true);
     }

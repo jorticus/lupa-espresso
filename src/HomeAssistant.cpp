@@ -10,10 +10,11 @@
 #include "IO.h"
 #include "config.h"
 #include "BrewControl.h"
+#include "BrewProfiles.h"
 #include "MqttParamManager.h"
 #include "Debug.h"
 #include <lwip/dns.h>
-//#include "version.h"
+#include <NetworkManager.h>
 
 /// @brief MQTT connection timeout.
 /// Must be less than the watchdog timer!!
@@ -43,7 +44,7 @@ HAAvailabilityComponent availability(context);
 HAComponent<Component::Switch> switch_power(context, 
     "power", 
     "Power", 
-    State::setPowerControl,
+    State::setPowerControl, // Callback
     "mdi:coffee"
 );
 
@@ -77,6 +78,35 @@ HAComponent<Component::Sensor> sensor_power(context,
     0.0f,
     SensorClass::Power
 );
+
+// HAComponent<Component::Select> select_profile(context,
+//     "profile",
+//     "Brew Profile",
+//     BrewControl::setProfile, // Callback
+//     s_profileNames,
+//     "mdi:chart-sankey"
+// );
+
+// HAComponent<Component::Number> cfg_pressure(context,
+//     "target_pressure",
+//     "Brew Pressure",
+//     "lupa/config/brew/pressure", // Backed by MqttParamManager
+//     InputRange { 1.0f, 12.0f, 0.5f, "Bar" }
+// );
+
+// HAComponent<Component::Number> cfg_flowrate(context,
+//     "target_flowrate",
+//     "Brew Flow Rate",
+//     "lupa/config/brew/flow", // Backed by MqttParamManager
+//     InputRange { 0.0f, 50.0f, 0.5f, "mL/s" }
+// );
+
+// HAComponent<Component::Number> cfg_temperature(context,
+//     "target_temp",
+//     "Boiler Temperature",
+//     "lupa/config/brew/boiler_temp", // Backed by MqttParamManager
+//     InputRange { 100.0f, 125.0f, 1.0f, "°C" }
+// );
 
 void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     String topic_s(topic);
@@ -129,6 +159,8 @@ void reportState() {
         switch_power.setState((state != State::MachineState::Off));
     }
 
+    // cfg_pressure.setState(...)
+
     sensor_isbrewing.reportState((state == State::MachineState::Brewing));
 }
 
@@ -155,6 +187,7 @@ static void wifi_dns_found_callback(const char *name, const ip_addr_t *ipaddr, v
 }
 #endif
 
+#if 0 // TODO: Migrate to Arduino 3.x
 /// @brief Resolve a hostname by querying DNS, with timeout
 /// @details Reimplementation of WiFiGeneric::hostByName that lets you specify a timeout
 /// @param hostname Hostname to query
@@ -166,7 +199,6 @@ static bool hostByName(const char* hostname, IPAddress& result, uint32_t timeout
         ip_addr_t addr;
         result = static_cast<uint32_t>(0);
 
-#if 0 // TODO: Migrate to Arduino 3.x
         if (!_arduino_event_group) {
             _arduino_event_group = xEventGroupCreate();
             xEventGroupSetBits(_arduino_event_group, WIFI_DNS_IDLE_BIT);
@@ -199,11 +231,11 @@ static bool hostByName(const char* hostname, IPAddress& result, uint32_t timeout
                 Debug.println("ERROR: DNS lookup timeout");
             }
         }
-#endif
     }
 
     return (uint32_t)result != 0;
 }
+#endif
 
 void HomeAssistant::process() {
     static unsigned long t_last = 0;
@@ -213,29 +245,30 @@ void HomeAssistant::process() {
     if (!isInitialized)
         return;
 
-#if 0
-    // TODO: We should really just stick this into a separate FreeRTOS task
-    // to ensure any blocks don't hold up the main loop.
     if (!client.connected()) {
         // Throttle reconnection attempts
         if ((millis() - t_last_connect) > NET_RECONNECT_INTERVAL_MS) {
+            net.stop();
             Debug.printf("Connecting to MQTT @ %s:%d\n", secrets::mqtt_server, secrets::mqtt_port);
 
             // Perform DNS lookup, returning immediately if address was not found.
-            // This prevents blocking of the main loop if the server is not available.
+            // This prevents blocking of the main task if the server is not available.
             // If the server is available, the next iteration of the loop should pick up the cached value immediately.
             IPAddress host_addr;
-            if (hostByName(secrets::mqtt_server, host_addr, 0)) {
-                esp_task_wdt_reset();
+            // if (hostByName(secrets::mqtt_server, host_addr, 0)) {
+            if (Network.hostByName(secrets::mqtt_server, host_addr)) {
+                // esp_task_wdt_reset();
 
+                Debug.println("DNS lookup succeeded");
                 // Connect WiFi client with timeout
-                // NOTE: This may halt the main loop for up to the timeout.
+                // NOTE: This may block the task for up to the timeout.
                 // For best results it would be beneficial to figure out how to do this asynchronously...
                 net.setTimeout(NET_CONNECT_TIMEOUT_SEC);
                 int r = net.connect(host_addr, secrets::mqtt_port);
                 if (r && net.connected()) {
-                    esp_task_wdt_reset();
+                    // esp_task_wdt_reset();
                     
+                    Debug.println("MQTT server socket connected");
                     // The socket is now connected, try to establish an MQTT connection.
                     // This may also introduce a delay for up to the timeout, but should only occur once on startup.
                     // Note: The timeout below is for the MQTT connection itself, not the underlying socket. 
@@ -245,7 +278,7 @@ void HomeAssistant::process() {
                         secrets::mqtt_username, 
                         secrets::mqtt_password);
 
-                    esp_task_wdt_reset();
+                    // esp_task_wdt_reset();
 
                     if (connected) {
                         Debug.println("MQTT connected, publishing config...");
@@ -288,12 +321,15 @@ void HomeAssistant::process() {
 
             // Estimate boiler power and report to HA
             float estimated_power = IO::getHeatPower() * CONFIG_BOILER_FULL_POWER_WATTS;
+            if (estimated_power > CONFIG_BOILER_FULL_POWER_WATTS) 
+                estimated_power = CONFIG_BOILER_FULL_POWER_WATTS;
+            else if (estimated_power < 0.0f) 
+                estimated_power = 0.0f;
             sensor_power.update(estimated_power);
         }
     }
 
     client.loop();
-#endif
 }
 
 void HomeAssistant::publishData(const char* topic, const char* payload) {

@@ -91,7 +91,7 @@ void initOTA() {
         //Display::setBrightness(1.0f);
         Debug.println("OTA Initiated");
 
-        esp_task_wdt_reset();
+        // esp_task_wdt_reset(); // TODO: "task not found"
         // esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true); // TODO: Migrate
 
         // TODO: Communicate state to UI task. Cannot render here without causing issues...
@@ -101,7 +101,7 @@ void initOTA() {
     ArduinoOTA.onEnd([]() {
         Debug.println("OTA Done!");
 
-        esp_task_wdt_reset();
+        // esp_task_wdt_reset(); // TODO: "task not found"
 
         //uiRenderFirmwareUpdate(OtaState::Success, 100);
 
@@ -119,7 +119,7 @@ void initOTA() {
             //uiRenderFirmwareUpdate(OtaState::Progress, p);
         }
 
-        esp_task_wdt_reset();
+        // esp_task_wdt_reset(); // TODO: "task not found"
     });
 
     ArduinoOTA.onError([](ota_error_t error) {
@@ -128,13 +128,15 @@ void initOTA() {
         
         State::setFault(State::FaultState::FirmwareUpdateFailure);
 
-        esp_task_wdt_reset();
+        // esp_task_wdt_reset(); // TODO: "task not found"
 
         if (error == OTA_AUTH_ERROR)            Debug.println("Auth Failed");
         else if (error == OTA_BEGIN_ERROR)      Debug.println("Begin Failed");
         else if (error == OTA_CONNECT_ERROR)    Debug.println("Connect Failed");
         else if (error == OTA_RECEIVE_ERROR)    Debug.println("Receive Failed");
         else if (error == OTA_END_ERROR)        Debug.println("End Failed");
+
+        Debug.printf("Available heap: %d\n", esp_get_free_heap_size());
 
         uiRenderFirmwareUpdate(OtaState::Failure, (int)error);
 
