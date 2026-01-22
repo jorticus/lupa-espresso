@@ -197,7 +197,6 @@ void processControlLoop()
         IO::isBoilerTankLow() ||
         (operating_profile == BoilerProfile::Off))
     {
-        //IO::setHeat(false);
         IO::setHeatPower(0.0f);
     }
     else {
@@ -213,7 +212,6 @@ void processControlLoop()
         float pid_input_2 = SensorSampler::getTemperature2(); // Boiler
 
         if (pid_input > Defaults::MaxBoilerTemperature) {
-            //IO::setHeat(false);
             IO::setHeatPower(0.0f);
             pid.reset();
             pid2.reset();
@@ -225,7 +223,6 @@ void processControlLoop()
             if (IO::getHeatPower() < 1.0f) {
                 Debug.printf("PREHEAT: %.1f\n", pid_input);
             }
-            //IO::setHeat(true);
             IO::setHeatPower(1.0f);
             pid.reset();
             pid2.reset();
@@ -286,15 +283,14 @@ void setProfile(BoilerProfile mode) {
             Debug.println("Off");
             pid.reset();
             pid2.reset();
+            IO::setHeatPower(0.0f);
             break;
         case BoilerProfile::Brew:
             Debug.println("Brew");
-            //pid.setSetpoint(CONFIG_BOILER_TEMPERATURE_C);
             pid.setSetpoint(param_boilerTemp.value());
             break;
         case BoilerProfile::Steam:
             Debug.println("Steam");
-            //pid.setSetpoint(CONFIG_BOILER_STEAM_TEMPERATURE_C);
             pid.setSetpoint(param_steamTemp.value());
             break;
         case BoilerProfile::Idle:
