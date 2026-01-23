@@ -17,7 +17,7 @@ TFT_eSprite gfx_right { &tft };
 float display_brightness = 0.0f;
 bool backlight_en = false;
 
-void initDisplay() {
+bool initDisplay() {
     digitalWrite(TFT_CS_LEFT, HIGH);
     digitalWrite(TFT_CS_RIGHT, HIGH);
 
@@ -42,7 +42,7 @@ void initDisplay() {
         gfx_right.createSprite(TFT_WIDTH, TFT_HEIGHT) == nullptr)
     {
         Debug.println("ERROR: display buffer allocation failed!");
-        return;
+        return false;
     }
 
     gfx_left.setTextSize(2);
@@ -55,6 +55,7 @@ void initDisplay() {
     ledcWriteChannel(LEDC_CH_DISPLAY, 0);
 
     turnOff();
+    return true;
 }
 
 void tftClearCanvas() {

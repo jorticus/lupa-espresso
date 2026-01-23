@@ -42,8 +42,8 @@ static bool  s_waterLow = false;
 static unsigned long s_boilerInterval = 0;
 static bool s_isFailsafeTriggered = false;
 
-const float PUMP_DUTY_MIN = 67.0f * 256.0f;  // Depends on configured ledc frequency
-const float PUMP_DUTY_MAX = 255.0f * 256.0f;
+// const float PUMP_DUTY_MIN = 67.0f * 256.0f;  // Depends on configured ledc frequency
+// const float PUMP_DUTY_MAX = 255.0f * 256.0f;
 const uint32_t PUMP_DUTY_OFF = 0;
 const uint32_t PUMP_DUTY_ON = ((1<<14)-1);
 
@@ -410,7 +410,7 @@ void setPump(bool en) {
     }
 
 #if CONFIG_ENABLE_PRESSURE_PROFILING
-    setPumpDuty(en ? PUMP_DUTY_ON : PUMP_DUTY_OFF);
+    setPumpDuty(en ? 1.0f : 0.0f);
 #else
     digitalWrite(PIN_OUT_PUMP, en);
 #endif
@@ -418,8 +418,13 @@ void setPump(bool en) {
 
 void setPumpDuty(float duty) {
 #if CONFIG_ENABLE_PRESSURE_PROFILING
-    uint32_t iduty = (uint32_t)((float)PUMP_DUTY_MAX * duty);
-    Debug.printf("Set pump duty = %d\n", iduty);
+    static uint32_t iduty_last = 0;
+    uint32_t iduty = (uint32_t)((float)PUMP_DUTY_ON * duty);
+
+    if (iduty != iduty_last) {
+        iduty_last = iduty;
+        Debug.printf("Set pump = %.1f\n", duty);
+    }
 
     if (duty <= 0.0f) {
         ledcWriteChannel(LEDC_CH_PUMP, PUMP_DUTY_OFF);

@@ -137,8 +137,8 @@ float fPID::calculateTick(float input) {
     output = out_p + out_i + out_d + this->static_offset;
 
     if (this->en_debug) {
-        Debug.printf("PID: I:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
-            input, error, out_p, out_i, out_d, static_offset, output);
+        Debug.printf("PID: I:%.2f SP:%.2f -> (E:%.2f,P:%.3f,I:%.3f,D:%.3f,X:%.3f) -> O:%.2f\n", 
+            input, setpoint, error, out_p, out_i, out_d, static_offset, output);
     }
 
     // If loop is trying to drive the system negative,

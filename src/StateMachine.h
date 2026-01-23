@@ -7,6 +7,7 @@ namespace State {
         unsigned long end_brew_time;
         float preinfuse_volume;
         float total_volume;
+        float avg_target_error;
 
         float avg_brew_pressure;
         int brew_pressure_avg_count;
