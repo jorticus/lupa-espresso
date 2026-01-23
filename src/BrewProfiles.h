@@ -1,105 +1,241 @@
 #pragma once
 
-#include <array>
-#include <span>
+#include <stdint.h>
 #include "BrewControl.h"
-#include "ProfileDefs.h"
+#include "IO.h"
+#include "MqttParamManager.h"
+#include "Debug.h"
 
-using namespace ProfileDefs;
-
-// typedef struct {
-//     /// @brief Time at which this point shall trigger
-//     uint32_t time_sec;
-//     /// @brief Pressure target for this time point
-//     float    pressure;
-//     /// @brief Flow target for this time point
-//     // float    flow;
-// } PressurePoint;
-
-// // Londinium (Light & Dark roast, 1:2 ratio)
-// // 3 bar, until drops appear (assuming typically 5 seconds)
-// // ramp to 9 bar to end 3rd
-// // 6 bar finish
-// static const std::array<PressurePoint, 3> s_dynProfile1 = {
-//     PressurePoint { 0,  2.5f },  // 5 sec @ 2.5 bar preinfusion
-//     PressurePoint { 5,  9.0f }, // 15 sec @ 9.0 bar extraction
-//     PressurePoint { 20, 6.0f }, // ramp down to 6.0 bar post-extraction
-// };
-
-// // Lever-style brew profile (light/medium roast)
-// static const std::array<PressurePoint, 4> s_dynProfile2 = {
-//     PressurePoint { 0,  1.5f },  // 10 sec @ 1.5 bar preinfusion
-//     PressurePoint { 10, 4.0f },  // 10 sec @ 4 bar
-//     PressurePoint { 20, 9.0f },  // 20 sec @ 9 bar
-//     PressurePoint { 40, 6.0f }   // ramp down to 6 bar
-// };
-
-// static const std::array<std::span<const PressurePoint>, 2> s_dynProfiles = {
-//     s_dynProfile1, s_dynProfile2
-// };
-
-// static const std::array<PressurePoint, 3> s_dynProfile3 = {
-
-// };
+#include <functional>
+#include <variant>
+#include <string>
+#include <span>
+#include <tuple>
 
 
-// Londinium (Light & Dark roast, 1:2 ratio)
-// 3 bar, until drops appear (assuming typically 5 seconds)
-// ramp to 9 bar to end 3rd
-// 6 bar finish
-static const std::array<Stage, 5> s_profileLondinium = {
-    SetFlowRate(3.0f),
-    WaitUntil(5.0f),
-    RampPressure(9.0f, 0.1f),
-    WaitUntil(20.0f),
-    SetPressure(6.0f)
+namespace ProfileDefs {
+
+class State {
+public:
+    uint32_t timeElapsed;
+    float currPressure;
+    float setPressure;
+    float currFlowRate;
+    float setFlowRate;
 };
 
+/// @brief Stage base class for defining a brew profile
+class StageBase {
+public:
+    /// @brief Exeucted when stage first triggered
+    virtual void activate() const {
+    }
 
-// Blooming espresso (grind finer, 1:2, 1:2.5 ratio)
-// 6 bar preinfusion, cut flow, wait 30 sec
-// 8-9 bar 
-static const std::array<Stage, 5> s_profileBloom = {
-    SetPressure(6.0f),
-    WaitUntil(5.0f),
-    SetFlowRate(0.0f), // Cut flow
-    WaitUntil(30.0f),
-    SetPressure(9.0f)
+    /// @brief Executed every PID step (~100ms)
+    /// @param state Current state of the PID control loop
+    /// @return Whether to advance to the next stage
+    virtual bool step(const State& state) const {
+        return true; // advance to next action by default
+    }
+
+    virtual void print() const { }
 };
 
-// Declining profile
-// (Dark roast, 1:2 ratio or less, reduces astringency)
-// 8-9 bar @ 7mL/s
-// slowly taper off throughout the shot
-static const std::array<Stage, 3> s_profileDeclining = {
-    SetPressure(9.0f),          // Start at 9 Bar
-    WaitUntil(3.0f),            // Wait for built-in preinfusion
-    RampPressure(1.0f, -0.027f) // Ramp down to 1Bar (Aiming for total 30 sec)
+/// @brief Action to set the pressure.
+/// Advances to next stage automatically.
+class SetPressure : public StageBase {
+public:
+    SetPressure(float target) : 
+        get_target{},
+        target(target)
+    { }
+
+    SetPressure(MqttParam::Parameter<float>& param) : 
+        get_target([&param]() -> float { return param.value(); }),
+        target(NAN)
+    { }
+
+    void activate() const override {
+        if (get_target) {
+            BrewControl::setPressure(get_target());
+        } else {
+            BrewControl::setPressure(target);
+        }
+    }
+
+    void print() const override { 
+        Debug.printf("Set Pressure: %.1f\n", (get_target) ? get_target() : target);
+    }
+
+protected:
+    std::function<float()> get_target;
+    const float target;
 };
 
-// Slayer shot (1:2 - 1:3 ratio)
-// preinfuse 1-2mL/s until pressure raises (not when drips appear)
-// ramp up to 8-9 bars
-// optionally taper to 6 bar
-static const std::array<Stage, 5> s_profileSlayerShot = {
-    SetFlowRate(2.0f),
-    Conditional([](auto& state) { return state.currPressure >= 3.0f; }),
-    RampPressure(9.0f, +0.1f), // Ramp up to 9 Bar @ 1 Bar/sec (0.1Bar / 100ms)
-    WaitUntil(25.0f),
-    RampPressure(6.0f, -0.1f), // Ramp down to 6 Bar
+/// @brief Action to set the flow rate
+/// Advances to next stage automatically.
+class SetFlowRate : public StageBase {
+public:
+    SetFlowRate(float target) : 
+        get_target{},
+        target(target)
+    { }
+
+    SetFlowRate(MqttParam::Parameter<float>& param) : 
+        get_target([&param]() -> float { return param.value(); }),
+        target(NAN)
+    { }
+
+    void activate() const override {
+        if (get_target) {
+            BrewControl::setFlowRate(get_target());
+        } else {
+            BrewControl::setFlowRate(target);
+        }
+    }
+
+    void print() const override { 
+        Debug.printf("Set Flow Rate: %.1f\n", (get_target) ? get_target() : target);
+    }
+
+protected:
+    std::function<float()> get_target;
+    const float target;
 };
 
-// Allonge (1:5 - 1:7 ratio) - Filter style (light roasts, grind coarser)
-// Preinfuse for 3-6 sec
-// Peak 8 bar @ 4.5mL/s
-// Continue 4.5mL/s for 35-40s
-static const std::array<Stage, 3> s_profileAllonge = {
-    SetPressure(3.0f),
-    WaitUntil(6.0f),
-    // SetPressure(8.0f),
-    SetFlowRate(4.5f) // TODO: Should we do a hybrid where it does either up to 8 bar or limit flow?
+/// @brief Action to immediately turn the pump off
+class PumpOff : public StageBase {
+public:
+    PumpOff() { }
+
+    void activate() const override {
+        BrewControl::disableOutput();
+
+    }
+
+    void print() const override { 
+        Debug.println("Pump Off");
+    }
 };
 
-static const ProfilesList s_profiles = {
-    { "Londinium", s_profileLondinium }
+/// @brief Action to ramp pressure up or down to the specified target value.
+/// Advances to next stage automatically.
+class RampPressure : public StageBase {
+public:
+    RampPressure(float target, float rate) :
+        target(target),
+        rate(rate)
+        { }
+
+    bool step(const State& state) const override {
+        if (
+            ((rate > 0) && (state.setPressure >= target)) ||
+            ((rate < 0) && (state.setPressure <= target))
+        ) {
+            BrewControl::setPressure(target);
+            return true; // Advance stage
+        }
+        else {
+            BrewControl::setPressure(state.setPressure + rate);
+            return false; // Do not advance
+        }
+    }
+
+    void print() const override { Debug.printf("Ramp Pressure to %.1f @ %.1f/s\n", target, rate*10.0f); }
+
+protected:
+    const float target;
+    const float rate;
 };
+
+/// @brief Conditional waiting until time has elapsed.
+/// Blocks until condition is met.
+class WaitUntil : public StageBase {
+public:
+    WaitUntil(uint32_t timestamp_sec) :
+        timestamp_sec(timestamp_sec)
+    { }
+
+    bool step(const State& state) const override {
+        return (state.timeElapsed >= this->timestamp_sec);
+    }
+
+    void print() const override { Debug.printf("Wait Until: %d s\n", timestamp_sec); }
+
+protected:
+    const uint32_t timestamp_sec;
+};
+
+/// @brief Conditional waiting until preinfusion has completed (approximately).
+/// Blocks until condition is met.
+class WaitForPreinfuse : public StageBase {
+public:
+    WaitForPreinfuse()
+    { }
+
+    bool step(const State& state) const override {
+        return true; // TODO...
+    }
+
+    void print() const override { Debug.printf("Wait Until: Preinfusion\n"); }
+};
+
+/// @brief Custom conditional using lambda function
+/// Blocks until condition is met.
+class Conditional : public StageBase {
+public:
+    Conditional(std::function<bool(const State& state)> conditional)
+        : _conditional(conditional) { }
+
+    bool step(const State& state) const override {
+        bool c = _conditional(state);
+        Debug.printf("CONDITION: %s\n", c ? "TRUE" : "FALSE");
+        return c;
+    }
+
+    void print() const override { Debug.printf("Condition\n"); }
+
+protected:
+    const std::function<bool(const State& state)> _conditional;
+};
+
+/// @brief Indicate that the brew has finished, regardless of whether the lever is still pulled
+class EndBrew : public StageBase {
+public:
+    EndBrew() { }
+
+    void activate() const override {
+        BrewControl::endBrew();
+    }
+
+    void print() const override { 
+        Debug.println("End Brew");
+    }
+};
+
+using Stage = std::variant<
+    // Actions
+    SetPressure,
+    RampPressure,
+    SetFlowRate,
+    PumpOff,
+    EndBrew,
+    // Conditions
+    WaitUntil,
+    WaitForPreinfuse,
+    Conditional
+>;
+
+using Profile = std::span<const Stage>;
+using ProfilesList = std::vector<std::tuple<std::string, Profile>>;
+
+}
+
+extern const ProfileDefs::ProfilesList s_profiles;
+extern const std::vector<std::string> s_profileNames;
+
+namespace BrewProfiles {
+
+    const std::vector<std::string> getProfileNames();
+
+}

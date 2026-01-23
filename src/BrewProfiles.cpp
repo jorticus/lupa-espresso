@@ -12,23 +12,15 @@ namespace BrewControl {
     extern MqttParam::Parameter<float> param_brewFlowRate;
 }
 
-#if 0
+// // Flat Pressure (Equivalent to BrewMode::ManualPressure)
+// static const std::array<Stage, 1> s_profileFlatPressure = {
+//     SetPressure(BrewControl::param_brewPressure)
+// };
 
-// Full Manual Control
-// Pump @ 100% allowing maximum allowable pressure
-static const std::array<Stage, 0> s_profileFullManual = {
-    // Do nothing. 
-};
-
-// Flat Pressure (Equivalent to BrewMode::ManualPressure)
-static const std::array<Stage, 1> s_profileFlatPressure = {
-    SetPressure(BrewControl::param_brewPressure)
-};
-
-// Flat Flow Rate (Equivalent to BrewMode::ManualFlow)
-static const std::array<Stage, 1> s_profileFlatFlowRate = {
-    SetFlowRate(BrewControl::param_brewFlowRate)
-};
+// // Flat Flow Rate (Equivalent to BrewMode::ManualFlow)
+// static const std::array<Stage, 1> s_profileFlatFlowRate = {
+//     SetFlowRate(BrewControl::param_brewFlowRate)
+// };
 
 
 // Londinium (Light & Dark roast, 1:2 ratio)
@@ -50,9 +42,8 @@ static const std::array<Stage, 5> s_profileLondinium = {
 static const std::array<Stage, 5> s_profileBloom = {
     SetPressure(6.0f),
     WaitUntil(5.0f),
-    SetPressure(0.0f),
-    // SetFlowRate(0.0f), // Cut flow
-    WaitUntil(30.0f),
+    PumpOff(), // Cut flow
+    WaitUntil(15.0f), // TODO: Should be 30 sec
     SetPressure(BrewControl::param_brewPressure)
 };
 
@@ -60,9 +51,10 @@ static const std::array<Stage, 5> s_profileBloom = {
 // (Dark roast, 1:2 ratio or less, reduces astringency)
 // 8-9 bar @ 7mL/s
 // slowly taper off throughout the shot
+// If we don't get up to the set pressure, profile will still decline over the shot
 static const std::array<Stage, 3> s_profileDeclining = {
     SetPressure(BrewControl::param_brewPressure),  // Start at 9 Bar
-    WaitUntil(3.0f),            // Wait for built-in preinfusion
+    WaitUntil(5.0f),            // Wait for built-in preinfusion
     RampPressure(1.0f, -0.027f) // Ramp down to 1Bar (Aiming for total 30 sec)
 };
 
@@ -72,7 +64,7 @@ static const std::array<Stage, 3> s_profileDeclining = {
 // optionally taper to 6 bar
 static const std::array<Stage, 6> s_profileSlayerShot = {
     Conditional([](auto& state) { return state.currPressure < 2.0f; }), // Wait for lever to depressurize system
-    SetFlowRate(2.0f), // TODO: Flow regulation not yet working correctly
+    SetFlowRate(2.0f),
     Conditional([](auto& state) { return state.currPressure >= 3.0f; }),
     RampPressure(9.0f, +0.1f), // Ramp up to 9 Bar @ 1 Bar/sec (0.1Bar / 100ms)
     WaitUntil(10.0f), // 25 sec?
@@ -83,30 +75,34 @@ static const std::array<Stage, 6> s_profileSlayerShot = {
 // Preinfuse for 3-6 sec
 // Peak 8 bar @ 4.5mL/s
 // Continue 4.5mL/s for 35-40s
-static const std::array<Stage, 3> s_profileAllonge = {
+static const std::array<Stage, 5> s_profileAllonge = {
     SetPressure(3.0f),
-    WaitUntil(6.0f),
+    WaitUntil(3),
     // SetPressure(8.0f),
-    SetFlowRate(4.5f) // TODO: Should we do a hybrid where it does either up to 8 bar or limit flow?
+    SetFlowRate(4.5f),
+    WaitUntil(40),
+    EndBrew()
 };
-
-#endif
 
 /// @brief Strings to show in UI selector
 const ProfilesList s_profiles = {
     // { "Manual",     s_profileFullManual },
     // { "Fixed Pressure",  s_profileFlatPressure },
     // { "Fixed Flow", s_profileFlatFlowRate },
-    // { "Londinium",  s_profileLondinium },
-    // { "Bloom",      s_profileBloom },
-    // { "Declining",  s_profileDeclining },
-    // { "Slayer",     s_profileSlayerShot },
-    // { "Allonge",    s_profileAllonge },
+    { "Londinium",  s_profileLondinium },
+    { "Bloom",      s_profileBloom },
+    { "Declining",  s_profileDeclining },
+    { "Slayer",     s_profileSlayerShot },
+    { "Allonge",    s_profileAllonge },
 };
 
-const std::vector<std::string> s_profileNames = {
-    "Manual", "Fixed Pressure", "Fixed Flow",
-    // "Londinium", "Bloom", "Declining", "Slayer", "Allonge"
-};
-
-// static constexpr std::vector<std::string> s_profileNames = 
+const std::vector<std::string> BrewProfiles::getProfileNames() {
+    std::vector<std::string> vec;
+    for (const auto& entry : s_profiles) {
+        vec.push_back(std::get<0>(entry));
+    }
+    if (vec.empty()) {
+        Debug.println("ERROR: Brew Profiles not yet intitialized");
+    }
+    return vec;
+}

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "SensorSampler.h"
 #include "BrewControl.h"
+#include "BrewProfiles.h"
 #include "MqttParamManager.h"
 //#include "HomeAssistant.h"
 #include "PID.h"
@@ -42,37 +43,30 @@ static fPID pid;
 static bool s_run = false;
 static bool s_inrange = false;
 
-#include "BrewProfiles.h"
-
 namespace BrewControl {
 
 enum class ControlMode {
+    Disabled,
     Pressure,
     FlowRate
 };
 
-static BrewProfile s_operatingBrewProfile = BrewProfile::ManualPressure;
+static BrewMode s_brewMode = BrewMode::ManualPressure;
 static ControlMode s_controlMode = ControlMode::Pressure;
 
-static ProfileDefs::Profile s_dynamicProfile;
-static int s_profileStageIndex = 0;
-
-// static std::span<const PressurePoint> s_activeDynProfile;
-// static int s_dynProfileIndex = 0;
 static uint64_t s_startTime = 0;
-static float s_lastDynPressurePoint = 0.0f;
 
 static float s_meanErrorPressure = 0.0f;
 static int s_meanCount = 0;
+static bool s_triggerBrewEnd = false;
 
+static int s_paramInitCount = 8;
 static float s_pidSetpointPressure = 0.0f;
 static float s_pidSetpointFlowRate = 0.0f;
-// static float s_meanErrorFlow = 0.0f;
 
 static void updatePidCoefficients();
 
 // Configuration parameters to expose to MQTT
-//MqttParam::Parameter<float> param_sp("pid/bar/sp", Defaults::SetPoint,      [] (float val) { setPressure(val); });
 MqttParam::Parameter<float> param_bar_kp("pid/bar/kp", Defaults::Kp,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_bar_ki("pid/bar/ki", Defaults::Ki,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_bar_kd("pid/bar/kd", Defaults::Kd,            [] (float val) { updatePidCoefficients(); });
@@ -81,14 +75,18 @@ MqttParam::Parameter<float> param_bar_po("pid/bar/po", Defaults::PlantOffset,   
 MqttParam::Parameter<float> param_flow_kp("pid/flow/kp", Defaults::Kp,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_flow_ki("pid/flow/ki", Defaults::Ki,            [] (float val) { updatePidCoefficients(); });
 MqttParam::Parameter<float> param_flow_kd("pid/flow/kd", Defaults::Kd,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_flow_po("pid/flow/po", Defaults::PlantOffset,   [] (float val) { updatePidCoefficients(); });
+MqttParam::Parameter<float> param_flow_po("pid/flow/po", 0.0f,                    [] (float val) { updatePidCoefficients(); });
 
-MqttParam::Parameter<float> param_brewPressure("brew/pressure", CONFIG_TARGET_BREW_PRESSURE, [] (float val) { setPressure(val); });
-MqttParam::Parameter<float> param_brewFlowRate("brew/flow",     10.0f, [] (float val) { setFlowRate(val); });
+MqttParam::Parameter<float> param_brewPressure("brew/pressure", CONFIG_TARGET_BREW_PRESSURE, [] (float val) { 
+    if (s_brewMode == BrewMode::ManualPressure) setPressure(val);
+});
+MqttParam::Parameter<float> param_brewFlowRate("brew/flow",     1.0f, [] (float val) {
+    if (s_brewMode == BrewMode::ManualFlow) setFlowRate(val);
+});
 
-
-// Manual control of pump, for testing
-//MqttParam::Parameter<float> pump_duty("pump", [] (float val) { IO::setPumpDuty(val); });
+static ProfileDefs::Profile s_dynamicProfile;
+static int s_profileStageIndex = 0;
+static int s_profileStageLastIndex = -1;
 
 void initControlLoop()
 {
@@ -114,6 +112,15 @@ void initControlLoop()
 }
 
 static void updatePidCoefficients() {
+    // Skip initial update of coeffs
+    if (s_paramInitCount > 0) {
+        s_paramInitCount--;
+        return;
+    }
+
+    // TODO: We're probably going to want two PID controllers,
+    // so that in flow-regulation mode we can still limit the maximum pressure to 10Bar or so.
+
     bool sel = (s_controlMode == ControlMode::Pressure);
     float kp = sel ? param_bar_kp.value() : param_flow_kp.value();
     float ki = sel ? param_bar_ki.value() : param_flow_ki.value();
@@ -138,17 +145,23 @@ static void setControlMode(ControlMode mode) {
         s_controlMode = mode;
 
         switch (mode) {
+            case ControlMode::Disabled:
+                Debug.println("PID Regulation: Disabled");
+                break;
+
             case ControlMode::Pressure:
-                Debug.println("Brew Control Mode: Pressure");
+                Debug.println("PID Regulation: Pressure");
                 break;
 
             case ControlMode::FlowRate:
-                Debug.println("Brew Control Mode: Flow Rate");
+                Debug.println("PID Regulation: Flow Rate");
                 break;
         }
 
         pid.reset();
         updatePidCoefficients();
+
+        IO::setPump(false);
     }
 }
 
@@ -226,50 +239,72 @@ float calculateTuningTick(float pid_input) {
 }
 #endif
 
+void disableOutput() {
+    IO::setPump(false);
+    setControlMode(ControlMode::Disabled);
+}
+
+void endBrew() {
+    disableOutput();
+    s_triggerBrewEnd = true;
+}
+
 void setPressure(float sp) {
+    Debug.printf("Target pressure: %.1f\n", sp);
+
+    if (sp <= __FLT_EPSILON__) {
+        disableOutput();
+        return;
+    }
+
     setControlMode(ControlMode::Pressure);
     pid.setSetpoint(sp);
     s_pidSetpointPressure = sp;
-    Debug.printf("Target pressure: %.1f\n", sp);
 }
 
 void setFlowRate(float sp) {
+    Debug.printf("Target flowrate: %.1f\n", sp);
+
+    if (sp <= __FLT_EPSILON__) {
+        disableOutput();
+        return;
+    }
+
     setControlMode(ControlMode::FlowRate);
     pid.setSetpoint(sp);
     s_pidSetpointFlowRate = sp;
-    Debug.printf("Target flowrate: %.1f\n", sp);
 }
+
 
 void processDynamicProfile(const ProfileDefs::State& state)
 {
-    if (s_profileStageIndex >= s_dynamicProfile.size()) {
+    const size_t numStages = s_dynamicProfile.size();
+    if (s_profileStageIndex >= numStages) {
         return; // No more steps
     }
 
-    if ((state.timeElapsed == 0) && (s_profileStageIndex == 0)) {
-        // Activate first step
-        Debug.printf("Profile step %d/%d: ", s_profileStageIndex, s_dynamicProfile.size());
-        auto& stage = s_dynamicProfile[s_profileStageIndex];
-        std::visit([](auto& st) { st.print(); }, stage);
-        std::visit([](auto& st) { st.activate(); }, stage);
-    }
+    Debug.printf("STATE: p=%.1f f=%.1f pt=%.1f ft=%.1f\n", 
+        state.currPressure, state.currFlowRate, state.setPressure, state.setFlowRate);
 
-    // Loop until no more stages can be executed
-    bool condition = false;
+    // Loop until no more stages can be advanced
+    bool advance = false;
     do {
         auto& stage = s_dynamicProfile[s_profileStageIndex];
 
-        // Call per PID iteration (~100ms)
-        condition = std::visit([&](auto& st) { return st.step(state); }, stage);
-        if (condition) {
-            // Advance to next step
-            s_profileStageIndex++;
-            Debug.printf("Profile step %d/%d: ", s_profileStageIndex, s_dynamicProfile.size());
+        if (s_profileStageLastIndex != s_profileStageIndex) {
+            s_profileStageLastIndex = s_profileStageIndex;
+            Debug.printf("Profile step %d/%d: ", s_profileStageIndex+1, s_dynamicProfile.size());
             std::visit([](auto& st) { st.print(); }, stage);
             std::visit([](auto& st) { st.activate(); }, stage);
         }
+
+        // Call per PID iteration (~100ms)
+        advance = std::visit([&](auto& st) { return st.step(state); }, stage);
+        if (advance) {
+            s_profileStageIndex++;
+        }
     }
-    while (condition);
+    while (advance && (s_profileStageIndex < numStages));
 }
 
 void processControlLoop()
@@ -288,7 +323,7 @@ void processControlLoop()
         float pid_input = (s_controlMode == ControlMode::Pressure) ? in_pressure : in_flowrate;
 
         // Dynamic pressure profiling
-        if (s_operatingBrewProfile == BrewProfile::DynamicProfile) {
+        if (s_brewMode == BrewMode::DynamicProfile) {
             ProfileDefs::State state {
                 .timeElapsed = (uint32_t)((t_now - s_startTime) / 1000),
                 .currPressure = in_pressure,
@@ -299,7 +334,11 @@ void processControlLoop()
             processDynamicProfile(state);
         }
 
-        if (s_controlMode == ControlMode::Pressure) {
+        if (s_controlMode == ControlMode::Disabled) {
+            IO::setPump(false);
+            s_inrange = false;
+        }
+        else if (s_controlMode == ControlMode::Pressure) {
             // It takes several seconds for the pre-infusion chamber to fill.
             // Make sure we get past this point before we start regulating with PID,
             // otherwise the integral term will windup and cause instability through the shot.
@@ -321,7 +360,7 @@ void processControlLoop()
             if ((t_now - t_last_pid) >= Defaults::UpdatePeriodMs) {
                 t_last_pid = t_now;
 
-                if (s_operatingBrewProfile == BrewProfile::TuningPressure) {
+                if (s_brewMode == BrewMode::TuningPressure) {
                     // TODO: Implement
                     //pid_output = calculateTuningTick(pid_input);
                     //publishTuningData(pid_input, pid_output);
@@ -332,6 +371,7 @@ void processControlLoop()
                     // Calculate mean error
                     float delta = abs(pid_input - pid_output);
                     s_meanErrorPressure += delta;
+                    s_meanCount++;
                 }
 
                 //Debug.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid.getSetpoint(), pid_output);
@@ -342,34 +382,63 @@ void processControlLoop()
     }
 }
 
-void setProfile(BrewProfile profile) {
-    s_operatingBrewProfile = profile;
+void setMode(BrewMode profile) {
+    s_brewMode = profile;
 
-    Debug.print("Brew profile: ");
+    Debug.print("Brew mode: ");
     switch (profile) {
-        case BrewProfile::TuningPressure:
+        case BrewMode::TuningPressure:
             Debug.println("Tuning Pressure PID");
             s_controlMode = ControlMode::Pressure;
             break;
-        case BrewProfile::TuningFlow:
+        case BrewMode::TuningFlow:
             Debug.println("Tuning Flow Rate PID");
             s_controlMode = ControlMode::FlowRate;
             break;
-        case BrewProfile::ManualPressure:
+        case BrewMode::ManualPressure:
             Debug.println("Constant Pressure");
             setPressure(param_brewPressure.value());
             break;
-        case BrewProfile::ManualFlow:
+        case BrewMode::ManualFlow:
             Debug.println("Constant Flow Rate");
-            setPressure(param_brewFlowRate.value());
+            setFlowRate(param_brewFlowRate.value());
             break;
-        case BrewProfile::DynamicProfile:
-            Debug.println("Dynamic");
-            // TODO: How to select which profile?
+        case BrewMode::DynamicProfile:
+            Debug.println("Dynamic Profile");
             break;
     }
 }
 
+bool setProfile(std::string profileName) {
+    // TODO: Manual should really just be 100% pump power with mechanical pressure regulation
+    if (profileName == "Manual") {
+        setMode(BrewMode::ManualPressure);
+        setPressure(CONFIG_TARGET_BREW_PRESSURE);
+        return true;
+    }
+    else if (profileName == "Fixed Pressure") {
+        setMode(BrewMode::ManualPressure);
+        return true;
+    }
+    else if (profileName == "Fixed Flow Rate") {
+        setMode(BrewMode::ManualFlow);
+        return true;
+    }
+
+    for (auto& item : s_profiles) {
+        auto name    = std::get<0>(item);
+        auto profile = std::get<1>(item);
+        if (name == profileName) {
+            setMode(BrewMode::DynamicProfile);
+            Debug.printf("Brew Profile: %s\n", profileName.c_str());
+            s_dynamicProfile = profile;
+            return true;
+        }
+    }
+
+    Debug.printf("ERROR: Profile '%s' not known\n", profileName);
+    return false;
+}
 
 void start() {
     // Start PID control loop
@@ -378,15 +447,23 @@ void start() {
     s_meanErrorPressure = 0.0f;
     s_meanCount = 0;
     s_profileStageIndex = 0;
+    s_profileStageLastIndex = -1;
     s_startTime = millis();
+    s_triggerBrewEnd = false;
 
     // Immediately turn on pump for responsiveness
     // PID will take over when it gets to it
     IO::setPump(true);
 
-    if (s_operatingBrewProfile == BrewProfile::DynamicProfile) {
-        s_dynamicProfile = s_profileSlayerShot;
-        // processDynamicProfile(0);
+    if (s_brewMode == BrewMode::DynamicProfile) {
+        ProfileDefs::State state {
+            .timeElapsed = 0,
+            .currPressure = 0,
+            .setPressure = s_pidSetpointPressure,
+            .currFlowRate = 0,
+            .setFlowRate = s_pidSetpointFlowRate,
+        };
+        processDynamicProfile(state);
     }
 
     Debug.println("Start brew profile");
@@ -409,33 +486,36 @@ void stop() {
 }
 
 bool isProfileComplete() {
-    // Indicate that the brew is complete (before lever is released)
-
-    // TODO...
-    // if (s_operatingBrewProfile == BrewProfile::Manual) {
-    //     return false;
-    // }
-    return false;
+    return s_triggerBrewEnd;
 }
 
-BrewProfile getProfile() {
-    return s_operatingBrewProfile;
+BrewMode getMode() {
+    return s_brewMode;
 }
 
 std::string getProfileString() {
-    switch (s_operatingBrewProfile) {
-        case BrewProfile::ManualPressure:
-            return "Pressure";
-        case BrewProfile::ManualFlow:
-            return "Flow Rate";
-        case BrewProfile::TuningPressure:
-            return "Tuning: Pressure";
-        case BrewProfile::TuningFlow:
-            return "Tuning: Flow";
-        case BrewProfile::DynamicProfile:
-            return "Dynamic"; // TODO: name of dynamic profile
-    }
+    // switch (s_brewMode) {
+    //     case BrewMode::ManualPressure:
+    //         return "Pressure";
+    //     case BrewMode::ManualFlow:
+    //         return "Flow Rate";
+    //     case BrewMode::TuningPressure:
+    //         return "Tuning: Pressure";
+    //     case BrewMode::TuningFlow:
+    //         return "Tuning: Flow";
+    //     case BrewMode::DynamicProfile:
+    //         return "Dynamic"; // TODO: name of dynamic profile
+    // }
+    // return "";
     return "";
+}
+
+std::vector<std::string> getAvailableProfiles() {
+    std::vector<std::string> profileNames;
+    for (auto& el : s_profiles) {
+        profileNames.push_back(std::get<0>(el));
+    }
+    return profileNames;
 }
 
 float getTargetError() {

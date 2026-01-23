@@ -79,34 +79,38 @@ HAComponent<Component::Sensor> sensor_power(context,
     SensorClass::Power
 );
 
-// HAComponent<Component::Select> select_profile(context,
-//     "profile",
-//     "Brew Profile",
-//     BrewControl::setProfile, // Callback
-//     s_profileNames,
-//     "mdi:chart-sankey"
-// );
+HAComponent<Component::Select> select_profile(context,
+    "profile",
+    "Brew Profile",
+    BrewControl::setProfile, // Callback
+    {
+        "Fixed Pressure",
+        "Fixed Flow Rate"
+        // Dynamic profiles will be added later
+    }, 
+    "mdi:chart-sankey"
+);
 
-// HAComponent<Component::Number> cfg_pressure(context,
-//     "target_pressure",
-//     "Brew Pressure",
-//     "lupa/config/brew/pressure", // Backed by MqttParamManager
-//     InputRange { 1.0f, 12.0f, 0.5f, "Bar" }
-// );
+HAComponent<Component::Number> cfg_pressure(context,
+    "target_pressure",
+    "Brew Pressure",
+    "lupa/config/brew/pressure", // Backed by MqttParamManager
+    InputRange { 2.0f, 12.0f, 0.5f, "Bar" }
+);
 
-// HAComponent<Component::Number> cfg_flowrate(context,
-//     "target_flowrate",
-//     "Brew Flow Rate",
-//     "lupa/config/brew/flow", // Backed by MqttParamManager
-//     InputRange { 0.0f, 50.0f, 0.5f, "mL/s" }
-// );
+HAComponent<Component::Number> cfg_flowrate(context,
+    "target_flowrate",
+    "Brew Flow Rate",
+    "lupa/config/brew/flow", // Backed by MqttParamManager
+    InputRange { 0.1f, 1.0f, 0.1f, "mL/s" }
+);
 
-// HAComponent<Component::Number> cfg_temperature(context,
-//     "target_temp",
-//     "Boiler Temperature",
-//     "lupa/config/brew/boiler_temp", // Backed by MqttParamManager
-//     InputRange { 100.0f, 125.0f, 1.0f, "°C" }
-// );
+HAComponent<Component::Number> cfg_temperature(context,
+    "target_temp",
+    "Boiler Temperature",
+    "lupa/config/brew/boiler_temp", // Backed by MqttParamManager
+    InputRange { 100.0f, 125.0f, 1.0f, "°C" }
+);
 
 void onMessageReceived(char* topic, byte* payload, unsigned int length) {
     String topic_s(topic);
@@ -142,6 +146,9 @@ void HomeAssistant::init() {
 
     client.setCallback(onMessageReceived);
 
+    // Set profiles list after all statics have been initialized.
+    select_profile.addOptions(BrewProfiles::getProfileNames());
+
     isInitialized = true;
 }
 
@@ -160,6 +167,7 @@ void reportState() {
     }
 
     // cfg_pressure.setState(...)
+    // select_profile.reportState();
 
     sensor_isbrewing.reportState((state == State::MachineState::Brewing));
 }
