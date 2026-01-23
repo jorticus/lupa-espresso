@@ -138,6 +138,8 @@ void taskNetworkFunc(void* ctx) {
             DebugLogger::process();
 
             HomeAssistant::process();
+
+            WebSrv::process();
         }
     }
 }
@@ -222,9 +224,9 @@ void initSystem() {
 #endif
 
     Serial.println("Start tasks");
-    xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", TASK_STACK_SIZE, nullptr, 3, &task_core,    CORE1);
-    xTaskCreatePinnedToCore(taskNetworkFunc,  "NetTask",  TASK_STACK_SIZE, nullptr, 2, &task_network, CORE1);
-    xTaskCreatePinnedToCore(taskRenderUiFunc, "UiTask",   TASK_STACK_SIZE, nullptr, 1, &task_ui,      CORE1);
+    xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", 3*1024, nullptr, 3, &task_core,    CORE1);
+    xTaskCreatePinnedToCore(taskNetworkFunc,  "NetTask",  4*1024, nullptr, 2, &task_network, CORE1);
+    xTaskCreatePinnedToCore(taskRenderUiFunc, "UiTask",   3*1024, nullptr, 1, &task_ui,      CORE1);
 
     Serial.println("System init done");
 }
@@ -309,6 +311,7 @@ void loop()
             Debug.printf("WARNING: LOW MEMORY (%d bytes)\n", heap);
             State::setFault(State::FaultState::SoftwarePanic, "OOM");
             delay(500);
+            abort();
         }
     }
 

@@ -62,4 +62,7 @@ namespace BrewControl {
     /// @brief Return the average delta between the process target and actual value (pressure or flowrate),
     // to determine how closely the shot tracked the desired profile (lower = better)
     float getTargetError();
+
+    /// @brief Return the current PID setpoint (could be pressure or flowrate, check getMode())
+    float getCurrentSetpoint();
 }

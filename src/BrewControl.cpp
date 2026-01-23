@@ -522,4 +522,8 @@ float getTargetError() {
     return s_meanErrorPressure / s_meanCount;
 }
 
+float getCurrentSetpoint() {
+    return pid.getSetpoint();
+}
+
 }
