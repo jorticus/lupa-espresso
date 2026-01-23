@@ -1,5 +1,7 @@
 #pragma once
 
+#include <driver/i2c_master.h>
+
 /// @brief Interface for the machine's hardware
 namespace IO {
 
@@ -64,4 +66,8 @@ namespace IO {
     /// @brief Current heater state (on/off)
     /// reflects instantaneous state of the heater
     bool isHeaterOn();
+
+// Peripheral Access
+
+    extern i2c_master_bus_handle_t i2c_bus;
 }

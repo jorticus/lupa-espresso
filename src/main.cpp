@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <Wire.h>
 #include <Adafruit_MAX31865.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
@@ -126,7 +125,7 @@ void taskNetworkFunc(void* ctx) {
     // TODO: quite memory hungry (~9KB)
     // We only have ~15KB to work with after the display buffers & MQTT subscriptions,
     // and we need around 10KB to accept an OTA update
-    // WebSrv::setup();
+    WebSrv::setup();
 
     while (true) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -139,8 +138,6 @@ void taskNetworkFunc(void* ctx) {
             DebugLogger::process();
 
             HomeAssistant::process();
-
-            // WebSrv::process();
         }
     }
 }

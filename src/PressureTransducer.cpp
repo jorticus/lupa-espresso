@@ -1,7 +1,7 @@
-#include <Arduino.h>
-#include <Wire.h>
+#include <driver/i2c_master.h>
 #include "PressureTransducer.h"
 #include "Debug.h"
+#include "IO.h"
 
 #define REGISTER_SAMPLE_CONTROL     0x30
 #define REGISTER_PRESSURE_VALUE     0x06
@@ -11,7 +11,23 @@
 #define START_SAMPLE    0x0A
 #define IS_SAMPLING     0x08
 
+static constexpr TickType_t I2C_TIMEOUT = pdMS_TO_TICKS(100);
+
+static i2c_master_dev_handle_t i2c_device;
+
 bool PressureTransducer::begin() {
+    i2c_device_config_t i2c_device_config = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = 0,
+        .scl_speed_hz = 10000
+    };
+
+    // i2c_master_bus_handle_t handle;
+    // ESP_ERROR_CHECK(i2c_master_get_bus_handle(0, &handle));
+
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(IO::i2c_bus, &i2c_device_config, &i2c_device));
+
+    // Sample sequence:
     // Write 0x0A to register 0x30 to begin acquisition
     // Read 0x30 until bit3 is 0, or wait 50ms
     // Read register 0x06, 5 bytes
@@ -27,21 +43,27 @@ bool PressureTransducer::begin() {
 }
 
 bool PressureTransducer::startSample() {
-    Wire.beginTransmission(i2c_addr);
-    Wire.write(REGISTER_SAMPLE_CONTROL);
-    Wire.write(START_SAMPLE);
-    return (Wire.endTransmission() == 0);
+    uint8_t txbuf[] = { REGISTER_SAMPLE_CONTROL, START_SAMPLE };
+    esp_err_t err = i2c_master_transmit(i2c_device, txbuf, sizeof(txbuf), I2C_TIMEOUT);
+    return (err == ESP_OK);
+}
+
+bool PressureTransducer::readRegister(uint8_t reg, uint8_t* buf, size_t len) {
+    esp_err_t err = i2c_master_transmit_receive(i2c_device, 
+        &reg, sizeof(reg),
+        buf, len,
+        I2C_TIMEOUT
+    );
+    return (err == ESP_OK);
 }
 
 bool PressureTransducer::isSampleReady() {
-    Wire.beginTransmission(i2c_addr);
-    Wire.write(REGISTER_SAMPLE_CONTROL);
-    if (Wire.endTransmission() != 0)
+    uint8_t b;
+    if (readRegister(REGISTER_SAMPLE_CONTROL, &b, sizeof(b))) {
+        return (b & IS_SAMPLING) == 0;
+    } else {
         return false;
-
-    Wire.requestFrom(i2c_addr, (uint8_t)1);
-    int b = Wire.read();
-    return (b & IS_SAMPLING) == 0;
+    }
 }
 
 pressure_sample_t PressureTransducer::readSample() {
@@ -52,7 +74,7 @@ pressure_sample_t PressureTransducer::readSample() {
     {
         int raw_pressure = (buf[0] << 16) | (buf[1] << 8) | buf[2];
         if (raw_pressure > 0x800000)
-        raw_pressure -= 0x1000000;
+            raw_pressure -= 0x1000000;
 
         // 120 * 1000 = 20 bits
         // 24 bits + 20 bits + 1 sign bit = 44 bits total required for integer math to work.
@@ -66,22 +88,4 @@ pressure_sample_t PressureTransducer::readSample() {
     }
 
     return sample;
-}
-
-bool PressureTransducer::readRegister(uint8_t reg, uint8_t* buf, size_t len) {
-    Wire.beginTransmission(i2c_addr);
-    Wire.write(reg);
-    if (Wire.endTransmission() != 0) {
-        // Debug.println("NACK from pressure");
-        return false;
-    }
-
-    Wire.requestFrom(i2c_addr, len);
-    size_t n_bytes = Wire.readBytes(buf, len);
-    if (n_bytes < sizeof(buf)) {
-        Debug.printf("ERROR: Pressure received %d bytes, expected %d\n", n_bytes, len);
-        return false;
-    }
-
-    return true;
 }

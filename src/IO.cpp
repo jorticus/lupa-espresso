@@ -2,7 +2,7 @@
 #include "esp32-hal-touch-legacy.h"
 
 #include <Arduino.h>
-#include <Wire.h>
+#include <driver/i2c_master.h>
 #include <Adafruit_SPIDevice.h>
 #include "IO.h"
 #include "Debug.h"
@@ -60,6 +60,8 @@ static Buttons<
 
 namespace IO {
 
+i2c_master_bus_handle_t i2c_bus;
+
 void onButtonPress(int pin) {
     switch (pin) {
         case 0: // POWER_BTN
@@ -97,13 +99,28 @@ void failsafe() {
     s_heaterPower = 0.0f;
 }
 
+void initI2C() {
+    i2c_master_bus_config_t i2c_bus_config = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = (gpio_num_t)I2C_SDA,
+        .scl_io_num = (gpio_num_t)I2C_SCL,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags = {
+            .enable_internal_pullup = true
+        }
+    };
+
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config, &i2c_bus));
+}
+
 void initGpio() {
     // Pressure sensors
     pinMode(I2C_SDA, INPUT_PULLUP);
     pinMode(I2C_SCL, INPUT_PULLUP);  // I2C #1
     pinMode(I2C_SCL2, INPUT_PULLUP); // I2C #2
-    Wire.setPins(I2C_SDA, I2C_SCL);
-    Wire.begin();
+
+    initI2C();
 
     // The following devices share the same SPI bus. 
     // Ensure all CS pins are de-asserted.
