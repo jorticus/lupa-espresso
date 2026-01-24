@@ -1,36 +1,62 @@
+/**
+ * Light-weight webserver with websockets for providing real-time data
+ * 
+ * This has had a bit of a journey:
+ * - Arduino WebServerAsync - too unstable, slow fetching HTML
+ * - ESP-IDF httpd - uses heap allocations and was causing OOM, slow fetching HTML
+ * - Mongoose - Fast! Memory efficient! No problems!
+ * 
+ */
+
 #include "WebSrv.h"
 #include "Debug.h"
+#include "StaticHeap.h"
 
 #include "HeatControl.h"
 #include "SensorSampler.h"
 #include "StateMachine.h"
 #include "BrewControl.h"
 #include "IO.h"
+#include "config.h"
 
 #include "Data.h"
 
-#include <esp_http_server.h>
+#include <mongoose.h>
+
+// #include <esp_http_server.h>
 #include <esp_wifi.h>
 #include <esp_event.h>
 
-#include <ArduinoJson.h>
 #include <cstring>
 #include <string>
+#include <memory_resource>
 
-static httpd_handle_t s_server;
-static httpd_req_t* s_wsreq;
-static constexpr size_t JSON_CAP = 1024;
-static constexpr size_t WS_RECV_CAP = 512;
+#define MG_C_STR(a) { (char *) (a), sizeof(a) - 1 }
 
-static const int JSON_BUFFER_SIZE = 1000;
-static StaticJsonBuffer<JSON_BUFFER_SIZE> jsonBuffer;
+static constexpr std::size_t HEAP_SIZE = 4 * 1024;
+static StaticHeap heap(HEAP_SIZE);
 
-static uint8_t s_wsBuffer[32];
+static const size_t CHUNK_SIZE = 512;
 
-static const unsigned long UPDATE_INTERVAL_MS = 500;
+extern "C" {
+
+void* mg_calloc(std::size_t n, std::size_t size) {
+    return heap.calloc(n, size);
+}
+
+void mg_free(void* ptr) {
+    return heap.free(ptr);
+}
+
+} // extern "C"
+
+static struct mg_mgr s_mgr;
+static struct mg_connection *s_listener = nullptr;
+static TaskHandle_t s_mg_task = nullptr;
+static volatile bool s_mg_running = false;
 
 struct SensorPacket {
-    uint8_t version;
+    uint8_t packet_type; // 1
 
     // Brew
     float   t1, t2, t3;
@@ -54,8 +80,35 @@ struct SensorPacket {
     uint32_t mem;
 } __attribute__((packed));
 
-static size_t packSensorPacket(SensorPacket &pkt) {
-    pkt.version = 1;
+struct BrewStatsPacket {
+    uint8_t packet_type; // 2
+
+    unsigned long start_brew_time;
+    unsigned long end_brew_time;
+    float preinfuse_volume;
+    float total_volume;
+    float avg_target_error;
+
+    float avg_brew_pressure;
+    int brew_pressure_avg_count;
+} __attribute__((packed));
+
+struct MetadataPacket {
+    uint8_t packet_type; // 3
+
+    char profileName[16];
+} __attribute__((packed));
+
+struct PidParamPacket {
+    uint8_t packet_type; // 4
+    uint8_t pid_id;
+    float sp;
+    float p, i, d;
+    float po;
+} __attribute__((packed));
+
+static void packSensorPacket(SensorPacket &pkt) {
+    pkt.packet_type = 1;
     pkt.t1 = SensorSampler::getTemperature();
     pkt.t2 = SensorSampler::getTemperature2();
     pkt.t3 = SensorSampler::getEstimatedGroupheadTemperature();
@@ -71,7 +124,7 @@ static size_t packSensorPacket(SensorPacket &pkt) {
     pkt.pid_d2 = HeatControl::pid_d2.last();
     pkt.t_sp   = HeatControl::getSetpoint();
 
-    pkt.b_pwr = IO::getHeatPower();
+    pkt.b_pwr = IO::getHeatPower() * CONFIG_BOILER_FULL_POWER_WATTS;
     pkt.b_on  = IO::isHeaterOn() ? 1 : 0;
 
     pkt.state = (uint8_t)State::getState();
@@ -79,119 +132,225 @@ static size_t packSensorPacket(SensorPacket &pkt) {
     pkt.brew  = IO::isBrewing() ? 1 : 0;
 
     pkt.mem = esp_get_free_heap_size();
-
-    return sizeof(pkt);
 }
 
-static esp_err_t ws_handler(httpd_req_t *req) {
-    if (req->method == HTTP_GET) {
-        Debug.println("Websocket opened");
-        s_wsreq = req;
-        return ESP_OK;
-    }
+static void packBrewStatsPacket(BrewStatsPacket &pkt) {
+    pkt.packet_type = 2;
 
-    // esp_err_t ret;
-    httpd_ws_frame_t ws_pkt;
-    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-    ws_pkt.payload = s_wsBuffer;
-    
-    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, sizeof(s_wsBuffer));
-    if (ret != ESP_OK) {
-        Debug.printf("Error receiving ws frame: %d\n", ret);
-        return ret;
-    }
-
-    // if (ws_pkt.type == HTTPD_WS_TYPE_TEXT && ws_pkt.payload != NULL) {
-    //     // ...
-    // }
-
-    SensorPacket pkt;
-    size_t pkt_len = packSensorPacket(pkt);
-
-    // Debug.printf("Send WS Frame\n");
-    ws_pkt.type = HTTPD_WS_TYPE_BINARY;
-    ws_pkt.payload = reinterpret_cast<uint8_t*>(&pkt);
-    ws_pkt.len = pkt_len;
-
-    ret = httpd_ws_send_frame(req, &ws_pkt);
-    if (ret != ESP_OK) {
-        Debug.printf("Error sending ws frame: %d\n", ret);
-    }
-
-    return ret;
+    auto& stats = State::brewStats;
+    // pkt.start_brew_time = 
 }
 
-esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
-{
-    // For any other URI send 404 and close socket
-    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "404 Not Found");
-    return ESP_FAIL;
+static void packMetadataPacket(MetadataPacket &pkt) {
+    pkt.packet_type = 3;
 }
 
+static void packPidParamPacket(PidParamPacket &pkt) {
+    pkt.packet_type = 4;
+
+    // TODO: Support one of 2 PID engines
+}
+
+
+
+struct ConnState {
+    const uint8_t *data;
+    size_t len;
+    size_t off;
+};
+
+static void mongoose_ev(struct mg_connection *c, int ev, void *ev_data) {
+
+    if (ev == MG_EV_WS_MSG) {
+        struct mg_ws_message *wm = (struct mg_ws_message *) ev_data;
+        const char *msg = (const char *) wm->data.buf;
+        size_t len = wm->data.len;
+
+        // Simple text commands:
+        // "get"  -> send latest SensorPacket (binary)
+        // "meta" -> send MetadataPacket (binary)
+        // "pidN" -> send PidParamPacket for id N (binary)
+        // "brew" -> send BrewStatsPacket (binary)
+        if (len >= 3 && strncmp(msg, "get", 3) == 0) {
+            SensorPacket pkt;
+            packSensorPacket(pkt);
+            mg_ws_send(c, &pkt, sizeof(pkt), WEBSOCKET_OP_BINARY);
+            return;
+        }
+
+        if (len >= 4 && strncmp(msg, "meta", 4) == 0) {
+            MetadataPacket mp;
+            packMetadataPacket(mp);
+            mg_ws_send(c, &mp, sizeof(mp), WEBSOCKET_OP_BINARY);
+            return;
+        }
+
+        if (len >= 3 && strncmp(msg, "pid", 3) == 0) {
+            uint8_t id = 0;
+            if (len > 3 && msg[3] >= '0' && msg[3] <= '9') id = (uint8_t)(msg[3] - '0');
+            PidParamPacket pp;
+            // fill id if pack function supports it; otherwise caller can ignore pid_id field
+            pp.pid_id = id;
+            packPidParamPacket(pp);
+            mg_ws_send(c, &pp, sizeof(pp), WEBSOCKET_OP_BINARY);
+            return;
+        }
+
+        if (len >= 4 && strncmp(msg, "brew", 4) == 0) {
+            BrewStatsPacket bp;
+            packBrewStatsPacket(bp);
+            mg_ws_send(c, &bp, sizeof(bp), WEBSOCKET_OP_BINARY);
+            return;
+        }
+
+        // unknown text frame -> ignore / echo
+        // mg_ws_send(c, msg, len, WEBSOCKET_OP_TEXT);
+        return;
+    }
+
+    if (ev == MG_EV_HTTP_MSG) {
+        struct mg_http_message *hm = (struct mg_http_message *) ev_data;
+        Debug.printf("GET: %.*s\n", (int)hm->uri.len, hm->uri.buf);
+
+        // WebSocket upgrade on /ws
+        if (mg_strcmp(hm->uri, MG_C_STR("/ws")) == 0) {
+            Debug.println("WEBSOCKET OPENED");
+            mg_ws_upgrade(c, hm, NULL);
+            return;
+        }
+
+        if (mg_strcmp(hm->uri, MG_C_STR("/")) == 0) {
+            const uint8_t *body = data::index_html_bytes;
+            size_t body_len = (size_t)data::index_html_size;
+
+            // create connection state and store in c->fn_data
+            ConnState *s = (ConnState*)mg_calloc(1, sizeof(ConnState));
+            if (!s) {
+                mg_http_reply(c, 500, "Content-Type: text/plain\r\n", "Out of memory");
+                return;
+            }
+            s->data = body;
+            s->len  = body_len;
+            s->off  = 0;
+            c->fn_data = s;
+
+            // send headers with chunked transfer and Connection: close
+            mg_http_reply(c, 200,
+                          "Content-Type: text/html\r\n"
+                          "Cache-Control: no-cache\r\n"
+                          "Transfer-Encoding: chunked\r\n"
+                          "Connection: close\r\n",
+                          "");
+
+            // send first chunk (keep chunks reasonably small)
+            size_t first = (s->len > CHUNK_SIZE) ? CHUNK_SIZE : s->len;
+            if (first > 0) {
+                mg_http_write_chunk(c, (const char*)(s->data + s->off), first);
+                s->off += first;
+            }
+
+            // if finished, send terminating empty chunk and free state
+            if (s->off >= s->len) {
+                mg_http_write_chunk(c, "", 0);
+                mg_free(s);
+                c->fn_data = nullptr;
+            }
+            return;
+        }
+
+        mg_http_reply(c, 404, "Content-Type: text/plain\r\n", "Not found");
+        return;
+    }
+
+    if (ev == MG_EV_WRITE) {
+        ConnState *s = (ConnState*)c->fn_data;
+        if (s) {
+            size_t rem = s->len - s->off;
+            if (rem > 0) {
+                size_t chunk = rem > CHUNK_SIZE ? CHUNK_SIZE : rem;
+                mg_http_write_chunk(c, (const char*)(s->data + s->off), chunk);
+                s->off += chunk;
+            }
+            if (s->off >= s->len) {
+                mg_http_write_chunk(c, "", 0);
+                mg_free(s);
+                c->fn_data = nullptr;
+            }
+        }
+        return;
+    }
+
+    if (ev == MG_EV_CLOSE) {
+        ConnState *s = (ConnState*)c->fn_data;
+        if (s) {
+            mg_free(s);
+            c->fn_data = nullptr;
+        }
+        return;
+    }
+}
+
+static void mongoose_task(void *arg) {
+    (void)arg;
+    s_mg_running = true;
+    while (s_mg_running) {
+        mg_mgr_poll(&s_mgr, 100);
+    }
+    mg_mgr_free(&s_mgr);
+    s_listener = nullptr;
+    s_mg_task = nullptr;
+    vTaskDelete(NULL);
+}
 
 static void disconnect_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data)
 {
     Debug.println("Stopping webserver");
-    httpd_stop(s_server);
+
+    if (s_mg_task) {
+        s_mg_running = false;
+        // wait for task to exit (short timeout loop)
+        for (int i = 0; i < 50 && s_mg_task; ++i) 
+            vTaskDelay(pdMS_TO_TICKS(50));
+    }
 }
 
 static void connect_handler(void* arg, esp_event_base_t event_base,
                             int32_t event_id, void* event_data)
 {
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.stack_size = 3*1024;
-
-    if (httpd_start(&s_server, &config) != ESP_OK) {
-        Debug.println("WebSrv: failed to start server");
-        s_server = nullptr;
+    if (s_mg_task) {
+        Debug.println("Mongoose already running");
         return;
     }
 
-    static const httpd_uri_t index_uri = {
-        .uri = "/",
-        .method = HTTP_GET,
-        .handler = [] (httpd_req_t* req) -> esp_err_t { 
-            httpd_resp_set_type(req, "text/html");
-            httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-            return httpd_resp_send(req, (const char*)data::index_html_bytes, data::index_html_size);
-        },
-        .user_ctx = NULL
-    };
-    httpd_register_uri_handler(s_server, &index_uri);
+    mg_log_set(MG_LL_ERROR);
 
-    static const httpd_uri_t script_js_uri = {
-        .uri = "/script.js",
-        .method = HTTP_GET,
-        .handler = [] (httpd_req_t* req) -> esp_err_t { 
-            httpd_resp_set_type(req, "application/javascript");
-            httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-            return httpd_resp_send(req, (const char*)data::script_js_bytes, data::script_js_size);
-        },
-        .user_ctx = NULL
-    };
-    httpd_register_uri_handler(s_server, &script_js_uri);
+    // Reset the local heap
+    heap.reset();
 
-    static const httpd_uri_t ws_uri = {
-        .uri = "/ws",
-        .method = HTTP_GET,
-        .handler = ws_handler,
-        .user_ctx = nullptr,
-        .is_websocket = true
-    };
-    httpd_register_uri_handler(s_server, &ws_uri);
+    mg_mgr_init(&s_mgr);
+    s_listener = mg_http_listen(&s_mgr, "http://0.0.0.0:80", mongoose_ev, NULL);
+    if (!s_listener) {
+        Debug.println("Mongoose: failed to bind");
+        mg_mgr_free(&s_mgr);
+        return;
+    }
 
-    httpd_register_err_handler(s_server, HTTPD_404_NOT_FOUND, http_404_error_handler);
+    xTaskCreate(mongoose_task, "mongoose", 3*1024, NULL, 5, &s_mg_task);
 
     Debug.println("Webserver started");
 }
 
 
+
+
 void WebSrv::setup() {
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &connect_handler, &s_server));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disconnect_handler, &s_server));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &connect_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disconnect_handler, NULL));
+}
+
+void WebSrv::stop() {
+    s_mg_running = false;
 }
 
 void WebSrv::process() {

@@ -7,8 +7,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zalando+Sans+SemiExpanded:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
+    <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.min.js"></script> -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script> -->
+    <script src=" https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js "></script>
+    <link href=" https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css " rel="stylesheet">
+
     <title>LUPA Espresso Dashboard</title>
-    <!-- <script src="https://unpkg.com/webgl-plot@0.7.2/dist/webglplot.umd.js"></script> -->
     <style>
         .header-controls {
             position:absolute; 
@@ -50,7 +55,27 @@
         }
         .indicator-on {
             background: #f76504e0;
-            border: 1px solid #ffd5b9e0;
+            border: 1px solid #ffffff77;
+        }
+        .indicator-ready, .indicator-postbrew {
+            background: #26a30096;
+            border: 1px solid #ffffff77;
+        }
+        .indicator-preheat {
+            background: #d37f0296;
+            border: 1px solid #ffffff77;
+        }
+        .indicator-brewing {
+            background: #007dd196;
+            border: 1px solid #ffffff77;
+        }
+        .indicator-filltank {
+            background: #02a2be96;
+            border: 1px solid #ffffff77;
+        }
+        .indicator-stabilizing {
+            background: #fff45a96;
+            border: 1px solid #ffffff77;
         }
         #lbl_state {
             min-width: 5em;
@@ -85,15 +110,14 @@
     </div>
 
 
-    <div id="chart1" style="width:100%; height:50vh;">
-    <!-- <div class="chart-status">NOT ACTIVE</div> -->
-    </div>
+    <div id="chart1" style="width:100%; height:50vh;"></div>
 
     <div>
         <div class="header-controls" >
             <div><span class="panel" id="lbl_boiler_indicator"></span></div>
             <div><h3>POWER</h3><span id="lbl_boiler_power">-</span></div>
-            <div><h3>TEMPERATURE</h3><span id="lbl_boiler_temp">-</span></div>
+            <div><h3>HX TEMPERATURE</h3><span id="lbl_boiler_temp">-</span></div>
+            <div><h3>HX DELTA</h3><span id="lbl_boiler_temp_delta">-</span></div>
             <div><h3>ESTIMATED</h3><span id="lbl_boiler_temp_est">-</span></div>
         </div>
         <h2 style="padding-left:20px">Boiler</h2>
@@ -105,356 +129,395 @@
     </div>
 
     <script type="module">
-    import { ChartGPU } from "https://unpkg.com/chartgpu@0.1.6/dist/index.js";
+        // import uPlot from 'https://cdn.jsdelivr.net/npm/uplot@1.6.32/+esm';
 
-    const gateway = (window.location.protocol == "file:") ? 
-        'ws://lupa.lan/ws' :
-        `ws://${window.location.hostname}/ws`;
+        const gateway = (window.location.protocol == "file:") ? 
+            'ws://lupa.lan/ws' :
+            `ws://${window.location.hostname}/ws`;
 
-    const url = 'http://lupa.lan/sensors';
-    const interval = 100; // ms
-    const max_samples = 60 * 2 * 10;
+        const interval = 100; // ms
 
-    var websocket = null;
-    var timer = null;
-    var chart1 = null;
-    var chart2 = null;
+        var websocket = null;
+        var timer = null;
+        var chart1 = null;
+        var chart2 = null;
 
-    const MachineState = [
-        'Off',
-        'Init',
-        'Preheat',
-        'Ready',
-        'Fault',
-        'Brewing',
-        'PostBrew',
-        'FirmwareUpdate',
-        'Sleep',
-        'Tuning',
-        'FillTank',
-        'StabilizePressure',
-        'SensorTest',
-        'UiTest'
-    ];
+        const MachineState = [
+            'Off',
+            'Init',
+            'Preheat',
+            'Ready',
+            'Fault',
+            'Brewing',
+            'PostBrew',
+            'FirmwareUpdate',
+            'Sleep',
+            'Tuning',
+            'FillTank',
+            'StabilizePressure',
+            'SensorTest',
+            'UiTest'
+        ];
 
-    // function simulatedSample(x) {
-    //     return Math.sin(x) * 0.8 + Math.sin(x * 0.23 + 1.2) * 0.25;
-    // }
+        const gridColor = '#222';
+        const fgColor = '#eee';
 
-    const SERIES0 = 0;
-    const SERIES1 = 1;
-    const SERIES2 = 2;
-
-    let chart1SeriesData = [
-        new Array(),
-        new Array(),
-        new Array(),
-    ];
-    let chart2SeriesData = [
-        new Array(),
-        new Array(),
-    ];
-
-    const samplingOptions = {
-        // Keep sampling on so the example stays responsive as the buffer grows.
-        sampling: 'lttb', // 'none' | 'lttb' | 'average' | 'max' | 'min' | 'ohlc';
-        // Auto-sample when point count exceeds this threshold.
-        samplingThreshold: 2500,
-    };
-
-    const chartCommonOptions = {
-        tooltip: { 
-            show: true,
-            trigger: 'axis' // 'item' | 'axis'
-            // formatter?: ((params: TooltipParams) => string) | ((params: ReadonlyArray<TooltipParams>) => string);
-        },
-        // When true, the chart may automatically keep the view anchored to the latest data while streaming.
-        autoScroll: true,
-        // theme: 'dark',
-        theme: {
-            backgroundColor: '#00000000'
-        },
-        // Color palette used for series color assignment when a series does not explicitly specify `color`.
-        palette: ['#4a9eff'],
-        animation: true,
-        // animation: {
-        //     duration: 10, //ms
-        //     easing: 'linear', //'linear' | 'cubicOut' | 'cubicInOut' | 'bounceOut'
-        //     delay: 0 // ms
-        // },
-    };
-
-    const chart1Options = {
-        ... chartCommonOptions,
-        grid: { left: 70, right: 24, top: 24, bottom: 44 },
-        xAxis: { type: 'value', min: 0, max: 30.0, name: 't (sec)', tickLength: 6 },
-        yAxis: { type: 'value', min: 0.0, max: 12.0, name: 'Pressure' },
-        dataZoom: [],
-        series: [
-            {
-                type: 'line',
-                name: 'Pressure',
-                data: chart1SeriesData[SERIES0], // Reference to array
-                color: '#87b827',
-                lineStyle: { width: 1, opacity: 1 },
-                ...samplingOptions
+        const commonOptions = {
+            pxAlign: true,
+            legend: {
+                // show: false
+                // live: false,
+                // isolate: true,
+                markers: {
+                    show: false
+                }
             },
-            {
-                type: 'line',
-                name: 'Flow Rate',
-                data: chart1SeriesData[SERIES1], // Reference to array
-                color: '#66d9ef',
-                lineStyle: { width: 1, opacity: 1 },
-                ...samplingOptions
+            cursor: {
+                show: true,
+                drag: {
+                    setScale: false,
+                    x: false,
+                    y: false
+                }
             },
-            {
-                type: 'line',
-                name: 'Target',
-                data: chart1SeriesData[SERIES2], // Reference to array
-                color: '#e6f8c1',
-                lineStyle: { width: 1, opacity: 1 },
-                ...samplingOptions
-            },
-        ],
-    };
-
-    const chart2Options = {
-        ... chartCommonOptions,
-        // Note: when `dataZoom` includes `{ type: 'slider' }`, ChartGPU reserves additional bottom
-        // space internally for the slider UI, so this value only needs to cover axis labels/title.
-        grid: { left: 70, right: 24, top: 24, bottom: 44 },
-        xAxis: { type: 'value', min: 0, max: 5*60.0, name: 't (sec)', tickLength: 6 },
-        yAxis: { type: 'value', min: 0, max: 125, name: 'Temperature' },
-
-        dataZoom: [{ type: 'inside' }, { type: 'slider', start: 70, end: 100 }],
-        series: [
-            {
-                type: 'line',
-                name: 'Boiler Temperature',
-                data: chart2SeriesData[SERIES0], // Reference to array
-                color: '#f92672',
-                lineStyle: { width: 1, opacity: 1 },
-                ...samplingOptions
-            },
-            {
-                type: 'line',
-                name: 'HX Temperature',
-                data: chart2SeriesData[SERIES1], // Reference to array
-                color: '#fd971f',
-                lineStyle: { width: 1, opacity: 1 },
-                ...samplingOptions
-            },
-        ],
-    };
-
-    async function initChart() {
-        chart1 = await ChartGPU.create(document.getElementById('chart1'), chart1Options);
-        chart2 = await ChartGPU.create(document.getElementById('chart2'), chart2Options);
-        // const ro = attachCoalescedResizeObserver(container, chart);
-
-        chart1.resize();
-        chart2.resize();
-    }
-
-    function resetChart1() {
-        chart1SeriesData[SERIES0] = new Array();
-        chart1SeriesData[SERIES1] = new Array();
-        chart1Options.xAxis.max = 30.0;
-        chart1.setOption(chart1Options);
-    }
-
-    // let lbl_off = document.getElementById('lbl_off');
-    // let lbl_on  = document.getElementById('lbl_on');
-    let lbl_state       = document.getElementById('lbl_state');
-    let lbl_profile     = document.getElementById('lbl_profile');
-    let lbl_pressure    = document.getElementById('lbl_pressure');
-    let lbl_flow        = document.getElementById('lbl_flow');
-    let lbl_volume      = document.getElementById('lbl_volume');
-    let lbl_deviation   = document.getElementById('lbl_devation');
-    let lbl_boiler_indicator = document.getElementById('lbl_boiler_indicator');
-    let lbl_boiler_power = document.getElementById('lbl_boiler_power');
-    let lbl_boiler_temp = document.getElementById('lbl_boiler_temp');
-    let lbl_boiler_temp_est = document.getElementById('lbl_boiler_temp_est');
-    let lbl_heap = document.getElementById('lbl_heap');
-
-    // Update the chart with new data
-    let time1 = 0;
-    let time2 = 0;
-    let is_brewing = false;
-    function updateChart(response) {
-        // console.log(response)
-
-        lbl_state.innerText = response.state
-        lbl_pressure.innerText  = response.p1.toFixed(2) + ' Bar';
-        lbl_flow.innerText      = response.flow.toFixed(2) + ' mL/s';
-        lbl_volume.innerText    = response.vol.toFixed(2) + ' mL';
-        // lbl_devation.innerText    = response.err.toFixed(2);
-
-        lbl_boiler_power.innerText = response.b_pwr.toFixed(0) + 'W';
-        lbl_boiler_indicator.className = (response.b_on) ? 'panel indicator-on' : 'panel';
-
-        lbl_boiler_temp.innerText = response.t1.toFixed(1) + ' °C';
-        lbl_boiler_temp_est.innerText = (response.t1 > 100) ? (response.t3.toFixed(1) + ' °C') : '-';
-
-        lbl_heap.innerText = response.mem + 'KB';
-
-        if (chart1 == null || chart2 == null)
-            return;
-
-        // Clear chart1 when brew starts
-        if (response.brew && !is_brewing) {
-            resetChart1();
-        }
-        is_brewing = response.brew;
-        
-        const temp1     = response.t1;
-        const temp2     = parseFloat(response.t2);
-        const pressure  = parseFloat(response.p1);
-        const flow      = parseFloat(response.flow);
-        const target    = parseFloat(response.setpoint)
-
-        const now = new Date();
-
-        if (is_brewing) {
-            const pt1 = [time1, pressure];
-            const pt2 = [time1, flow];
-            const pt3 = [time1, ]
-
-            chart1.appendData(SERIES0, [pt1]);
-            chart1.appendData(SERIES1, [pt2]);
-            chart1SeriesData[SERIES0].push(pt1);
-            chart1SeriesData[SERIES1].push(pt2);
-
-            time1 += 0.1;
-        }
-
-        const pt3 = [time2, temp1];
-        const pt4 = [time2, temp2];
-        chart2.appendData(SERIES0, [pt3]);
-        chart2.appendData(SERIES1, [pt4]);
-        chart2SeriesData[SERIES0].push(pt3)
-        chart2SeriesData[SERIES1].push(pt4)
-
-        // Grow x-axis when we reach the end
-        if (time1 > chart1Options.xAxis.max) {
-            // chartOptions.xAxis.max *= 2;
-            chart1Options.xAxis.max += 10;
-            chart1.setOption(chart1Options);
-        }
-        // Truncate data and shift
-        if (time2 > chart2Options.xAxis.max) {
-            chart2Options.xAxis.min += 10;
-            chart2Options.xAxis.max += 10;
-            chart2.setOption(chart2Options);
-        }
-
-        // Adjust y axis range if temperature is hot enough
-        if ((temp1 > 100) && (chart2Options.yAxis.min < 100)) {
-            chart2Options.yAxis.min = 100;
-            chart2.setOption(chart2Options);
-        }
-        else if ((temp1 < 90) && (chart2Options.yAxis.min > 90)) {
-            chart2Options.yAxis.min = 0;
-            chart2.setOption(chart2Options);
-        }
-
-        // TODO: Measure time delta since last call, or use provided timestamp
-        time2 += 0.1;
-    }
-
-    function parseSensorPacket(arrayBuffer) {
-        const EXPECTED_SIZE = 53; // uint8 + 11 floats + 3 uint8 + uint32 = 53 bytes
-        if (arrayBuffer.byteLength < EXPECTED_SIZE) {
-            throw new Error(`packet too small (${arrayBuffer.byteLength})`);
-        }
-
-        const dv = new DataView(arrayBuffer);
-        let off = 0;
-        const version   = dv.getUint8(off); off += 1;
-        const t1        = dv.getFloat32(off, true); off += 4;
-        const t2        = dv.getFloat32(off, true); off += 4;
-        const t3        = dv.getFloat32(off, true); off += 4;
-        const p1        = dv.getFloat32(off, true); off += 4;
-        const flow      = dv.getFloat32(off, true); off += 4;
-        const vol       = dv.getFloat32(off, true); off += 4;
-        const setpoint  = dv.getFloat32(off, true); off += 4;
-        const avg_err   = dv.getFloat32(off, true); off += 4;
-        const is_flowing= dv.getUint8(off) !== 0; off += 1;
-        const pid_i     = dv.getFloat32(off, true); off += 4;
-        const pid_d1    = dv.getFloat32(off, true); off += 4;
-        const pid_d2    = dv.getFloat32(off, true); off += 4;
-        const t_sp      = dv.getFloat32(off, true); off += 4;
-        const b_pwr     = dv.getFloat32(off, true); off += 4;
-        const b_on      = dv.getUint8(off) !== 0; off += 1;
-        const state     = dv.getUint8(off); off += 1;
-        const pull      = dv.getUint8(off) !== 0; off += 1;
-        const brew      = dv.getUint8(off) !== 0; off += 1;
-        const mem       = dv.getUint32(off, true); off += 4;
-
-        return {
-            "version": version,
-            "t1": t1,
-            "t2": t2,
-            "t3": t3,
-            "p1": p1,
-            "flow": flow,
-            "vol": vol,
-            "setpoint": setpoint,
-            "avg_err": avg_err,
-            "is_flowing": is_flowing,
-            "pid_i": pid_i,
-            "pid_d1": pid_d1,
-            "pid_d2": pid_d2,
-            "t_sp": t_sp,
-            "b_pwr": b_pwr,
-            "b_on": b_on,
-            "state": MachineState[state],
-            "pull": pull,
-            "brew": brew,
-            "mem": mem
         };
-    }
 
-    function onOpen(event) {
-        console.log('Connection opened');
-        websocket.send('get');
-        if (!timer) {
-            timer = setInterval(() => {
-                websocket.send('get');
-            }, interval);
+        const axesOptions = {
+            labelSize: 30,
+            // labelFont: "bold 12px Arial",
+            // font: "12px Arial",
+            gap: 5,
+            size: 30,
+            stroke: fgColor,
+            grid: {
+                show: true,
+                stroke: gridColor,
+                width: 2,
+                dash: [],
+            },
+            ticks: {
+                show: true,
+                stroke: gridColor,
+                width: 2,
+                dash: [],
+                size: 10,
+            }
+        };
+
+        var time1 = 0.0;
+        var time2 = 0.0;
+    
+        const chart1_t_max_initial = 30;
+        var chart1_t_max = chart1_t_max_initial;
+
+        var chart1Options = {
+            ...commonOptions,
+            scales: {
+                x: {
+                    time: false,
+                    range: (self, min, max) => {
+                        if (time1 > chart1_t_max) {
+                            chart1_t_max += 10;
+                        }
+                        return [ 0, chart1_t_max ];
+                    }
+                },
+                y: {
+                    range: [0, 12.0],
+
+                }
+            },
+            axes: [
+                { ...axesOptions, grid: { show: false } },
+                { ...axesOptions, show: true, label: "Pressure", }
+            ],
+            series: [
+                {
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' s',
+                },
+                {
+                    label: 'Pressure',
+                    stroke: '#87b827',
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' Bar',
+                    // width: 1/devicePixelRatio,
+                    points: { show: false }
+                },
+                {
+                    label: 'Flow',
+                    stroke: '#66d9ef',
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' mL/s',
+                    points: { show: false }
+                },
+                {
+                    label: 'Target',
+                    stroke: '#e6f8c1',
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + '',
+                    points: { show: false }
+                },
+            ],
+        };
+
+        var chart2_t_min = 0;
+        var chart2_t_max = 500;
+        const chart2_t_inc = 30;
+
+        var chart2Options = {
+            ...commonOptions, 
+            scales: {
+                x: {
+                    time: false,
+                    range: (self, min, max) => {
+                        if (time2 > chart2_t_max) {
+                            chart2_t_min += chart2_t_inc;
+                            chart2_t_max += chart2_t_inc;
+                        }
+                        return [ chart2_t_min, chart2_t_max ];
+                    }
+                },
+                y: {
+                    range: [0, 130.0],
+                }
+            },
+            axes: [
+                { ...axesOptions, grid: { show: false } },
+                { ...axesOptions, show: true, label: "Temperature", }
+            ],
+            series: [
+                {
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' s',
+                },
+                {
+                    label: 'HX Temperature',
+                    stroke: '#f92672',
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' °C',
+                    points: { show: false }
+                },
+                {
+                    label: 'Boiler Temperature',
+                    stroke: '#fd971f',
+                    value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' °C',
+                    points: { show: false }
+                }
+            ],
+        };
+
+        var chart1 = null;
+        var chart2 = null;
+        var data1 = null;
+        var data2 = null;
+        function initChart() {
+            const ctx1 = document.getElementById('chart1');
+            const ctx2 = document.getElementById('chart2');
+
+            chart1Options.width = ctx1.clientWidth;
+            chart1Options.height =  ctx1.clientHeight - 20;
+
+            chart2Options.width = ctx2.clientWidth;
+            chart2Options.height =  ctx2.clientHeight - 20;
+        
+            data1 = [new Array(), new Array(), new Array(), new Array()];
+            chart1 = new uPlot(chart1Options, data1, ctx1);
+
+            data2 = [new Array(), new Array(), new Array()];
+            chart2 = new uPlot(chart2Options, data2, ctx2);
         }
-    }
 
-    function onMessage(event) {
-        const pkt = parseSensorPacket(event.data);
-        updateChart(pkt);
-    }
+        
+        var is_brewing = false;
+        function updateChart1(response) {
+            if (!chart1) return;
 
-    function onClose(event) {
-        console.log('Connection closed');
-        setTimeout(initWebSocket, 2000);
-        if (timer) {
-            clearInterval(timer);
-            timer = null;
+            // Clear chart1 when brew starts
+            if (response.pull && !is_brewing) {
+                console.log('Reset brew');
+                chart1_t_max = chart1_t_max_initial;
+                for (var i = 0; i < data1.length; i++) {
+                    data1[i] = new Array();
+                }
+                time1 = 0;
+            }
+            is_brewing = response.pull;
+
+            if (is_brewing) {
+                data1[0].push(time1);
+                data1[1].push(response.p1);
+
+                data1[2].push(response.flow * 10.0);
+                data1[3].push(response.setpoint);
+
+                chart1.setData(data1);
+
+                time1 += 0.1;
+            }
         }
 
-        lbl_state.innerText = 'Disconnected';
-    }
+        function updateChart2(response) {
+            if (!chart2) return;
 
-    function initWebSocket() {
-        websocket = new WebSocket(gateway);
-        websocket.binaryType = 'arraybuffer';
-        websocket.onopen = onOpen;
-        websocket.onclose = onClose;
-        websocket.onmessage = onMessage;
-    }
+            data2[0].push(time2);
+            data2[1].push(response.t1);
+            data2[2].push(response.t2);
 
-    function onLoad() {
-        initWebSocket();
-        initChart();
-    }
+            chart2.setData(data2);
 
-    window.addEventListener('load', onLoad);
+            time2 += 0.1;
+        }
+
+        // Resize handling: adjust uPlot sizes to container when window changes
+        function resizeCharts() {
+            const el1 = document.getElementById('chart1');
+            const el2 = document.getElementById('chart2');
+
+            if (chart1 && el1) {
+                chart1.setSize({
+                    width: el1.clientWidth,
+                    height: Math.max(20, el1.clientHeight - 20)
+                });
+            }
+  
+            if (chart2 && el2) {
+                chart2.setSize({
+                    width: el2.clientWidth,
+                    height: Math.max(20, el2.clientHeight - 20)
+                });
+            }
+        }
+
+        let _resizeTimer = null;
+        window.addEventListener('resize', () => {
+            _resizeTimer = window.requestAnimationFrame(() => {
+                resizeCharts();
+            });
+        });
+
+        // Ensure charts get sized after initial creation
+        window.addEventListener('load', () => setTimeout(resizeCharts, 100));
+
+        var state = null;
+        function updateUi(response) {
+            if (response.state != state) {
+                state = response.state;
+                lbl_state.innerText = response.state;
+                var className = 'indicator-' + state.toLowerCase();
+                lbl_state.className = 'panel ' + className;
+            }
+
+            lbl_pressure.innerText  = response.p1.toFixed(2) + ' Bar';
+            lbl_flow.innerText      = response.flow.toFixed(2) + ' mL/s';
+            lbl_volume.innerText    = response.vol.toFixed(2) + ' mL';
+            lbl_deviation.innerText    = response.avg_err.toFixed(2);
+
+            lbl_boiler_power.innerText = response.b_pwr.toFixed(0) + ' W';
+            lbl_boiler_indicator.className = (response.b_on) ? 'panel indicator-on' : 'panel';
+
+            lbl_boiler_temp.innerText = response.t1.toFixed(1) + ' °C';
+            lbl_boiler_temp_est.innerText = (response.t1 > 100) ? (response.t3.toFixed(1) + ' °C') : '-';
+            lbl_boiler_temp_delta.innerText = (response.t2 - response.t1).toFixed(1) + ' °C'
+
+            lbl_heap.innerText = response.mem + 'KB';
+        }
+
+        function parseSensorPacket(arrayBuffer) {
+            const EXPECTED_SIZE = 53; // uint8 + 11 floats + 3 uint8 + uint32 = 53 bytes
+            if (arrayBuffer.byteLength < EXPECTED_SIZE) {
+                throw new Error(`packet too small (${arrayBuffer.byteLength})`);
+            }
+
+            const dv = new DataView(arrayBuffer);
+            let off = 0;
+            const version   = dv.getUint8(off); off += 1;
+            const t1        = dv.getFloat32(off, true); off += 4;
+            const t2        = dv.getFloat32(off, true); off += 4;
+            const t3        = dv.getFloat32(off, true); off += 4;
+            const p1        = dv.getFloat32(off, true); off += 4;
+            const flow      = dv.getFloat32(off, true); off += 4;
+            const vol       = dv.getFloat32(off, true); off += 4;
+            const setpoint  = dv.getFloat32(off, true); off += 4;
+            const avg_err   = dv.getFloat32(off, true); off += 4;
+            const is_flowing= dv.getUint8(off) !== 0; off += 1;
+            const pid_i     = dv.getFloat32(off, true); off += 4;
+            const pid_d1    = dv.getFloat32(off, true); off += 4;
+            const pid_d2    = dv.getFloat32(off, true); off += 4;
+            const t_sp      = dv.getFloat32(off, true); off += 4;
+            const b_pwr     = dv.getFloat32(off, true); off += 4;
+            const b_on      = dv.getUint8(off) !== 0; off += 1;
+            const state     = dv.getUint8(off); off += 1;
+            const pull      = dv.getUint8(off) !== 0; off += 1;
+            const brew      = dv.getUint8(off) !== 0; off += 1;
+            const mem       = dv.getUint32(off, true); off += 4;
+
+            return {
+                "version": version,
+                "t1": t1,
+                "t2": t2,
+                "t3": t3,
+                "p1": p1,
+                "flow": flow,
+                "vol": vol,
+                "setpoint": setpoint,
+                "avg_err": avg_err,
+                "is_flowing": is_flowing,
+                "pid_i": pid_i,
+                "pid_d1": pid_d1,
+                "pid_d2": pid_d2,
+                "t_sp": t_sp,
+                "b_pwr": b_pwr,
+                "b_on": b_on,
+                "state": MachineState[state],
+                "pull": pull,
+                "brew": brew,
+                "mem": mem
+            };
+        }
+
+        const WS_GET_FRAME = 'get';
+        const WS_GET_METADATA = 'meta';
+        const WS_GET_PID = 'pid'; // +N
+        const WS_GET_BREW_STATS = 'brew';
+
+        function onOpen(event) {
+            console.log('Connection opened');
+            websocket.send(WS_GET_FRAME);
+            // websocket.send(WS_GET_METADATA); // TODO
+            if (!timer) {
+                timer = setInterval(() => {
+                    websocket.send(WS_GET_FRAME);
+                }, interval);
+            }
+        }
+
+        function onMessage(event) {
+            const pkt = parseSensorPacket(event.data);
+            updateUi(pkt);
+            updateChart1(pkt);
+            updateChart2(pkt);
+        }
+
+        function onClose(event) {
+            console.log('Connection closed');
+            setTimeout(initWebSocket, 2000);
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+
+            lbl_state.innerText = 'Disconnected';
+        }
+
+        function initWebSocket() {
+            websocket = new WebSocket(gateway);
+            websocket.binaryType = 'arraybuffer';
+            websocket.onopen = onOpen;
+            websocket.onclose = onClose;
+            websocket.onmessage = onMessage;
+        }
+
+        function onLoad() {
+            initWebSocket();
+            initChart();
+        }
+
+        window.addEventListener('load', onLoad);
     </script>
 </body>
 </html>

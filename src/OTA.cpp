@@ -5,6 +5,7 @@
 #include "UI.h"
 #include "Debug.h"
 #include "StateMachine.h"
+#include "WebSrv.h"
 #include "secrets.h"
 #include <esp_task_wdt.h>
 
@@ -91,6 +92,7 @@ void initOTA() {
         //Display::setBrightness(1.0f);
         Debug.println("OTA Initiated");
 
+        WebSrv::stop();
         // esp_task_wdt_reset(); // TODO: "task not found"
         // esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true); // TODO: Migrate
 

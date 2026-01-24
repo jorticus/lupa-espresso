@@ -1,0 +1,9 @@
+{
+    "name": "Mongoose",
+    "keywords": "http",
+    "description": "Mongoose Web Server",
+    "dependencies": [],
+    "version": "46ad050",
+    "frameworks": "*",
+    "platforms": "*"
+}
