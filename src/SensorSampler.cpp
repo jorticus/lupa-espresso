@@ -106,7 +106,7 @@ static const float filter_21tap_5hz[] = {
 };
 
 // Automatic FIR filters of type FirFilter<N_TAPS> { taps }
-static auto filter_pressure     = MAKE_FIR_FILTER(filter_21tap_5hz);  // 100Hz sample rate
+static auto filter_pressure     = MAKE_FIR_FILTER(filter_11tap_1hz);
 static auto filter_temperature_1  = MAKE_FIR_FILTER(filter_21tap_10hz);   
 static auto filter_temperature_2  = MAKE_FIR_FILTER(filter_21tap_10hz);   
 
@@ -124,63 +124,18 @@ static bool is_valid_temperature_1 = false;
 static bool is_valid_temperature_2 = false;
 static bool is_valid_flow_rate = false;
 
-static const unsigned long sampleRateMs = 20;
+static const unsigned long sampleRateMs = 100;
+static const unsigned long pressureSampleRateMs = 100;
 static const unsigned long temperatureSampleRateMs = 100;
 static const auto sampleTickDelay = 500 / portTICK_PERIOD_MS;
 
-static TimerHandle_t timer1;
-static TimerHandle_t timer2;
+static TimerHandle_t timer;
+static TaskHandle_t samplerTaskHandle;
+
+static volatile bool s_samplingEnabled = false;
 
 bool isMaxSampleReady() {
     return (digitalRead(MAX_RDY) == LOW);
-}
-
-/// @brief Sensor sampling timer, records sensor readings at a regular interval
-/// @param timer FreeRTOS timer handle
-static void onSensorTimer(TimerHandle_t timer) {
-    auto t1 = millis();
-
-    if (isPressureAvailable) {
-        // As long a the timer interval is greater than ~50ms, we should have a valid sample by now
-        auto sample = pressure.readSample();
-        if (sample.is_valid) {
-            filter_pressure.add(sample.pressure);
-        }
-        else {
-            filter_pressure.add(0);
-            Debug.println("Error reading pressure sensor");
-        }
-        if (filter_pressure.isReady()) {
-            value_pressure = filter_pressure.get() * 0.0001f;
-            is_valid_pressure = sample.is_valid;
-        }
-    }
-
-    auto t2 = millis();
-    auto td = (t2 - t1);
-
-    if (td > sampleRateMs) {
-        // Above code took longer than the timer interval to execute
-        Debug.printf("TIMER1 OVERFLOW %d\n", td);
-        td = sampleRateMs;
-    }
-
-    // Debug.printf("P: %.1f  T: %.1f  F: %.1f  td:%d\n",
-    //     value_pressure,
-    //     value_temperature,
-    //     value_flow_rate,
-    //     (t2 - t1)
-    // );
-
-    if (isPressureAvailable) {
-        pressure.startSample();
-    }
-
-    auto interval = sampleRateMs - td;
-    if (xTimerStart(timer1, pdMS_TO_TICKS(sampleRateMs)) != pdPASS) {
-        Debug.println("ERROR: Could not rearm timer1");
-        State::setFault(State::FaultState::SensorFailure, "TIMER1");
-    }
 }
 
 static float calculateRtdTemperature(float rtd_raw) {
@@ -191,198 +146,215 @@ static float calculateRtdTemperature(float rtd_raw) {
     return (t * 1.024f) - 1.38f;
 }
 
-static void onTemperatureTimer(TimerHandle_t timer) {
+static void onSamplerTimer(TimerHandle_t timer) {
+    BaseType_t woken = pdFALSE;
+    // Signal the sampler task which will preempt other running tasks
+    vTaskNotifyGiveFromISR(samplerTaskHandle, &woken);
+    portYIELD_FROM_ISR(woken);
+}
+
+static void samplerTask(void* pv) {
     static int divider10 = 0;
     static int divider2 = 0;
 
-    auto t1 = millis();
+    while (true) {
+        // Wait for timer tick
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-    if (isTemperature1Available) {
-        // MAX chip is configured for an automatic 60Hz sample rate.
-        // Since we're only sampling at ~10Hz, we should always have a sample available.
-        if (rtd1.isSampleReady()) {
-            auto raw = rtd1.readSample();
-            if (raw > 0 && raw < 0x7000) {//0x7FFF) {
-                filter_temperature_1.add(raw);
+        if (isPressureAvailable) {
+            auto sample = pressure.readSample();
 
-                // auto unfiltered_temp = calculateRtdTemperature(raw);
-                // if (unfiltered_temp > 200.0f) {
-                //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
-                // }
+            if (sample.is_valid) {
+                filter_pressure.add(sample.pressure);
+            }
 
-                if (filter_temperature_1.isReady()) {
-                    float raw_filtered = filter_temperature_1.get();
-                    auto temperature = calculateRtdTemperature(raw_filtered);
-                    if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
-                        value_temperature_1 = temperature;
-                        is_valid_temperature_1 = true;
+            if (filter_pressure.isReady()) {
+                // Debug.printf("P=%d\n", sample.pressure);
+                value_pressure = filter_pressure.get() * 0.0001f;
+                is_valid_pressure = true;
+            }
+
+            pressure.startSample();
+        }
+
+        portYIELD();
+
+        if (isTemperature1Available) {
+            // MAX chip is configured for an automatic 60Hz sample rate.
+            // Since we're only sampling at ~10Hz, we should always have a sample available.
+            if (rtd1.isSampleReady()) {
+                auto raw = rtd1.readSample();
+                if (raw > 0 && raw < 0x7000) {//0x7FFF) {
+                    filter_temperature_1.add(raw);
+
+                    // auto unfiltered_temp = calculateRtdTemperature(raw);
+                    // if (unfiltered_temp > 200.0f) {
+                    //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+                    // }
+
+                    if (filter_temperature_1.isReady()) {
+                        float raw_filtered = filter_temperature_1.get();
+                        auto temperature = calculateRtdTemperature(raw_filtered);
+                        if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+                            value_temperature_1 = temperature;
+                            is_valid_temperature_1 = true;
+                        }
+                        else {
+                            Debug.printf("INVALID RTD1 T: %.2f (0x%x)\n", temperature, raw_filtered);
+                            is_valid_temperature_1 = false;
+                        }
                     }
-                    else {
-                        Debug.printf("INVALID RTD1 T: %.2f (0x%x)\n", temperature, raw_filtered);
-                        is_valid_temperature_1 = false;
-                    }
+                } else {
+                    // Debug.printf("INVALID RTD1 RAW: 0x%x\n", raw);
                 }
-            } else {
-                // Debug.printf("INVALID RTD1 RAW: 0x%x\n", raw);
             }
         }
-    }
 
 #if defined(LUPA_V1)
-    // This GPIO (34) is cursed - it MUST be read here, due to an inexplicable effect from the MAX RTD chip.
-    // Before RTD1, it always reads open. After RTD2, it always reads closed.
-    // Outside of this loop, it will be unstable.
-    // Even here, it must be debounced as it will occasinally flip states.
-    if (digitalRead(PIN_IN_WATER_LOW) == LOW) {
-        if (waterTankDebounce < 10) waterTankDebounce++;
-        else g_isWaterTankLow = true;
-    }
-    else {
-        if (waterTankDebounce > 0) waterTankDebounce--;
-        else g_isWaterTankLow = false;
-    }
+        // This GPIO (34) is cursed - it MUST be read here, due to an inexplicable effect from the MAX RTD chip.
+        // Before RTD1, it always reads open. After RTD2, it always reads closed.
+        // Outside of this loop, it will be unstable.
+        // Even here, it must be debounced as it will occasinally flip states.
+        if (digitalRead(PIN_IN_WATER_LOW) == LOW) {
+            if (waterTankDebounce < 10) waterTankDebounce++;
+            else g_isWaterTankLow = true;
+        }
+        else {
+            if (waterTankDebounce > 0) waterTankDebounce--;
+            else g_isWaterTankLow = false;
+        }
 #endif
 
-    if (isTemperature2Available) {
-        if (rtd2.isSampleReady()) {
-            auto raw = rtd2.readSample();
-            if (raw > 0 && raw < 0x7000) {//0x7FFF) {
-                filter_temperature_2.add(raw);
+        portYIELD();
 
-                // auto unfiltered_temp = calculateRtdTemperature(raw);
-                // if (unfiltered_temp > 200.0f) {
-                //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
-                // }
+        if (isTemperature2Available) {
+            // TODO: We probably need to synchronize this with LCD buffer updates...
+            if (rtd2.isSampleReady()) {
+                auto raw = rtd2.readSample();
+                if (raw > 0 && raw < 0x7000) {//0x7FFF) {
+                    filter_temperature_2.add(raw);
 
-                if (filter_temperature_2.isReady()) {
-                    float raw_filtered = filter_temperature_2.get();
-                    auto temperature = calculateRtdTemperature(raw_filtered);
-                    if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
-                        value_temperature_2 = temperature;
-                        is_valid_temperature_2 = true;
+                    // auto unfiltered_temp = calculateRtdTemperature(raw);
+                    // if (unfiltered_temp > 200.0f) {
+                    //     Debug.printf("T GLITCH: %.1f %u\n", unfiltered_temp, raw);
+                    // }
+
+                    if (filter_temperature_2.isReady()) {
+                        float raw_filtered = filter_temperature_2.get();
+                        auto temperature = calculateRtdTemperature(raw_filtered);
+                        if (temperature > RTD_MIN_TEMP && temperature < RTD_MAX_TEMP) {
+                            value_temperature_2 = temperature;
+                            is_valid_temperature_2 = true;
+                        }
+                        else {
+                            Debug.printf("INVALID RTD2 T: %.2f (0x%x)\n", temperature, raw_filtered);
+                            is_valid_temperature_2 = false;
+                        }
                     }
-                    else {
-                        Debug.printf("INVALID RTD2 T: %.2f (0x%x)\n", temperature, raw_filtered);
-                        is_valid_temperature_2 = false;
+                } else {
+                    // Debug.printf("INVALID RTD2 RAW: 0x%x\n", raw);
+                }
+            }
+        }
+
+        portYIELD();
+        
+        if (isFlowAvailable) {
+            // The pulse counter should always have a valid sample, though it runs with its own timer
+            // and may not be aligned to our sample rate.
+            if (PulseCounter1.isSampleReady()) {
+                auto flow1_hz = PulseCounter1.getFrequency();
+                auto flow2_hz = PulseCounter2.getFrequency();
+                if (flow1_hz < 300.0f) {
+                    // Use raw unfiltered value for detecting boolean isFlowing,
+                    // as this avoids introducing delay
+                    if (s_isFlowing && (flow1_hz < 1.0f)) {
+                        s_isFlowing = false;
+                        value_flow_rate = 0.0f;
                     }
+                    else if (!s_isFlowing && (flow1_hz > 5.0f)) {
+                        s_isFlowing = true;
+                    }
+                    
+                    // Conversion of Hz to normalized reading [0.0,1.0]
+                    // using a typical reading of 40Hz for maximum flow
+                    const float hz_normalized_coeff = 0.025f;
+                    
+                    // Calibration to ensure f2 == f1 when water 
+                    // can only leave via return path and not the grouphead
+                    const float f1_to_f2_ratio = 1.111f;
+
+                    // Calibration to mL/s
+                    // Note: coeff comes from calibrating the total volume, 
+                    // so we must also take into account the sample rate of 10Hz 
+                    // Note2: Not really sure why 0.5 works tbh, but the reading checks out.
+                    const float ml_calib_coeff = 0.5f * 10.0f; 
+                    
+                    const float f1_coeff = hz_normalized_coeff * ml_calib_coeff;
+                    const float f2_coeff = hz_normalized_coeff * ml_calib_coeff * f1_to_f2_ratio;
+                    
+                    // Calibrate flow readings
+                    flow1_hz *= f1_coeff;
+                    flow2_hz *= f2_coeff;
+
+                    // The flow rate out of the grouphead is the difference between
+                    // flow into the system (flow1) minus the flow out of the system (flow2),
+                    // though this does not account for filling of the preinfusion chamber.
+                    auto diff = (flow1_hz - flow2_hz);
+                    //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
+
+                    // The combined flowrate is a value between 0.0 and 1.0
+                    filter_flowrate.add(diff);
+                    if (filter_flowrate.isReady()) {
+                        // value_flow_rate = filter_flowrate.get();
+                        value_flow_rate = diff;
+
+                        // V[mL] = R[mL/s] * dt[s]
+                        const float t_delta = (float)temperatureSampleRateMs * 0.001f;
+                        value_flow_volume += (value_flow_rate * (float)t_delta);
+
+                        // // Measure time delta since last reading
+                        // static uint64_t t_flow_last = 0;
+                        // uint64_t t_flow = millis();
+                        // uint64_t t_delta = (t_flow - t_flow_last);
+                        // t_flow_last = t_flow;
+                        // if (t_delta > 1000) {
+                        //     t_delta = t_delta; // Out of range
+                        // }
+                        //value_flow_volume += (value_flow_rate * (float)t_delta * 0.001f);
+
+                        is_valid_flow_rate = true;
+                    }
+                }
+                else {
+                    // Ignore spurious reading (repeat sample)
                 }
             } else {
-                // Debug.printf("INVALID RTD2 RAW: 0x%x\n", raw);
+                is_valid_flow_rate = false;
+                s_isFlowing = false;
+                value_flow_rate = 0.0f;
+            }
+        }
+
+        // 100ms per tick
+        if (divider2++ == 2) {
+            divider2 = 0;
+            pressureSamples.add(value_pressure);
+            flowSamples.add(value_flow_rate);
+        }
+
+        // 1 sec per tick
+        if (divider10++ == 10) {
+            divider10 = 0;
+            if (filter_temperature_1.isReady()) {
+                temperatureSamples.add(value_temperature_1);
+            }
+            if (filter_temperature_2.isReady()) {
+                temperatureSamples2.add(value_temperature_2);
             }
         }
     }
-    
-    if (isFlowAvailable) {
-        // The pulse counter should always have a valid sample, though it runs with its own timer
-        // and may not be aligned to our sample rate.
-        if (PulseCounter1.isSampleReady()) {
-            auto flow1_hz = PulseCounter1.getFrequency();
-            auto flow2_hz = PulseCounter2.getFrequency();
-            if (flow1_hz < 300.0f) {
-                // Use raw unfiltered value for detecting boolean isFlowing,
-                // as this avoids introducing delay
-                if (s_isFlowing && (flow1_hz < 1.0f)) {
-                    s_isFlowing = false;
-                    //value_flow_volume = 0.0f; // Reset volume
-                }
-                else if (!s_isFlowing && (flow1_hz > 5.0f)) {
-                    s_isFlowing = true;
-                }
-                
-                // Conversion of Hz to normalized reading [0.0,1.0]
-                // using a typical reading of 40Hz for maximum flow
-                const float hz_normalized_coeff = 0.025f;
-                
-                // Calibration to ensure f2 == f1 when water 
-                // can only leave via return path and not the grouphead
-                const float f1_to_f2_ratio = 1.111f;
-
-                // Calibration to mL/s
-                // Note: coeff comes from calibrating the total volume, 
-                // so we must also take into account the sample rate of 10Hz 
-                // Note2: Not really sure why 0.5 works tbh, but the reading checks out.
-                const float ml_calib_coeff = 0.5f * 10.0f; 
-                
-                const float f1_coeff = hz_normalized_coeff * ml_calib_coeff;
-                const float f2_coeff = hz_normalized_coeff * ml_calib_coeff * f1_to_f2_ratio;
-                
-                // Calibrate flow readings
-                flow1_hz *= f1_coeff;
-                flow2_hz *= f2_coeff;
-
-                // The flow rate out of the grouphead is the difference between
-                // flow into the system (flow1) minus the flow out of the system (flow2),
-                // though this does not account for filling of the preinfusion chamber.
-                auto diff = (flow1_hz - flow2_hz);
-                //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
-
-                // The combined flowrate is a value between 0.0 and 1.0
-                filter_flowrate.add(diff);
-                if (filter_flowrate.isReady()) {
-                    value_flow_rate = filter_flowrate.get();
-
-                    // V[mL] = R[mL/s] * dt[s]
-                    const float t_delta = (float)temperatureSampleRateMs * 0.001f;
-                    value_flow_volume += (value_flow_rate * (float)t_delta);
-
-                    // // Measure time delta since last reading
-                    // static uint64_t t_flow_last = 0;
-                    // uint64_t t_flow = millis();
-                    // uint64_t t_delta = (t_flow - t_flow_last);
-                    // t_flow_last = t_flow;
-                    // if (t_delta > 1000) {
-                    //     t_delta = t_delta; // Out of range
-                    // }
-                    //value_flow_volume += (value_flow_rate * (float)t_delta * 0.001f);
-
-                    is_valid_flow_rate = true;
-                }
-            }
-            else {
-                // Ignore spurious reading (repeat sample)
-            }
-        } else {
-            is_valid_flow_rate = false;
-            s_isFlowing = false;
-        }
-    }
-
-    // 100ms per tick
-    if (divider2++ == 2) {
-        divider2 = 0;
-        pressureSamples.add(value_pressure);
-        flowSamples.add(value_flow_rate);
-    }
-
-    // 1 sec per tick
-    if (divider10++ == 10) {
-        divider10 = 0;
-        if (filter_temperature_1.isReady()) {
-            temperatureSamples.add(value_temperature_1);
-        }
-        if (filter_temperature_2.isReady()) {
-            temperatureSamples2.add(value_temperature_2);
-        }
-    }
-
-    auto t2 = millis();
-    auto td = (t2 - t1);
-
-    if (td > temperatureSampleRateMs) {
-        // Above code took longer than the timer interval to execute
-        Debug.println("TIMER2 OVERFLOW");
-        td = temperatureSampleRateMs;
-    }
-
-    auto interval = temperatureSampleRateMs - td;
-    if (xTimerStart(timer, pdMS_TO_TICKS(interval)) != pdPASS) {
-        Debug.println("ERROR: Could not rearm timer2");
-        State::setFault(State::FaultState::SensorFailure, "TIMER2");
-    }
-
-    //Debug.printf("T: %.1f  td:%d\n", value_temperature, (t2-t1));
 }
-
 
 bool initPressure() {
     Debug.println("Initialize Pressure");
@@ -493,18 +465,6 @@ bool initialize() {
     isPressureAvailable = initPressure();
     isFlowAvailable = initFlow();
 
-    // NOTE: Do not use auto-reset for the timer,
-    // as this may lead to an assert within the stack when it tries to reset the timer.
-    // Manually resetting the timer is more reliable.
-    timer2 = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(temperatureSampleRateMs), pdFALSE, nullptr, onTemperatureTimer);
-    if (timer2 == nullptr) {
-        Debug.println("ERROR: Could not allocate SensorSamplerT timer");
-    }
-    timer1 = xTimerCreate("SensorSampler", pdMS_TO_TICKS(sampleRateMs), pdFALSE, nullptr, onSensorTimer);
-    if (timer1 == nullptr) {
-        Debug.println("ERROR: Could not allocate SensorSampler timer");
-    }
-
     if (!isTemperature1Available) {
         Debug.println("ERROR: Temperature sensor not available");
     }
@@ -515,13 +475,21 @@ bool initialize() {
         Debug.println("ERROR: Flow sensor not available");
     }
 
+    // Note: Task must be high priority since we must make the sampling intervals
+    xTaskCreatePinnedToCore(samplerTask, "Sensors", 2*1024, nullptr, 5, &samplerTaskHandle, 1);
+
+    // Timer to trigger the sampling task
+    timer = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(sampleRateMs), pdTRUE, nullptr, onSamplerTimer);
+    if (timer == nullptr) {
+        Debug.println("ERROR: Could not allocate SensorSamplerT timer");
+    }
+
     return (isTemperature1Available && isPressureAvailable && isFlowAvailable);
 }
 
 void start() {
     Debug.println("Start sensor sampler");
-    xTimerStart(timer2, 0);
-    xTimerStart(timer1, 0);
+    xTimerStart(timer, 0);
 
     if (isTemperature1Available) {
         rtd1.autoConvert(true);
@@ -531,18 +499,27 @@ void start() {
         pressure.startSample();
     }
     if (isFlowAvailable) {
-        PulseCounter1.begin(FLOW1_PULSE_PIN, sampleRateMs);
-        PulseCounter2.begin(FLOW2_PULSE_PIN, sampleRateMs);
+        PulseCounter1.begin(FLOW1_PULSE_PIN, pressureSampleRateMs);
+        PulseCounter2.begin(FLOW2_PULSE_PIN, pressureSampleRateMs);
     }
+
+    s_samplingEnabled = true;
 }
 
 void stop() {
     Debug.printf("Stop sensor sampler");
-    xTimerStop(timer1, 0);
-    xTimerStop(timer2, 0);
+    xTimerStop(timer, 0);
 
     rtd1.autoConvert(false);
     rtd2.autoConvert(false);
+
+    s_samplingEnabled = false;
+    is_valid_pressure = false;
+
+    filter_pressure.reset();
+    filter_temperature_1.reset();
+    filter_temperature_2.reset();
+    filter_flowrate.reset();
 }
 
 void process() {

@@ -43,6 +43,14 @@ public:
         return ready;
     }
 
+    void reset() {
+        ready = false;
+        last_index = 0;
+        for (int i = 0; i < N_TAPS; i++) {
+            samples[i] = 0;
+        }
+    }
+
 private:
     const float*                taps;
     std::array<float, N_TAPS>   samples;

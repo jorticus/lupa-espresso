@@ -11,7 +11,7 @@
 #define START_SAMPLE    0x0A
 #define IS_SAMPLING     0x08
 
-static constexpr TickType_t I2C_TIMEOUT = pdMS_TO_TICKS(100);
+static const int I2C_TIMEOUT = 40; //pdMS_TO_TICKS(10);
 
 static i2c_master_dev_handle_t i2c_device;
 
@@ -19,7 +19,8 @@ bool PressureTransducer::begin() {
     i2c_device_config_t i2c_device_config = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = 0,
-        .scl_speed_hz = 10000
+        // .scl_speed_hz = 10000
+        .scl_speed_hz = 400000
     };
 
     // i2c_master_bus_handle_t handle;
