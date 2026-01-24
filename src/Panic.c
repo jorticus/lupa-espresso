@@ -95,3 +95,83 @@ const char* get_panic_buffer() {
 void print_panic_buffer() { }
 
 #endif
+
+
+bool s_enable_heap_log = true;
+const size_t s_min_heap_log_size = 2048;
+
+void * __real_malloc(size_t size);
+void * __real_calloc(size_t n, size_t size);
+void * __real_realloc(void *ptr, size_t size);
+
+static volatile int malloc_trace_reentrant = 0;
+static volatile int lwip_wrap_reentrant = 0;
+
+static inline void log_alloc(const char *op, void *ptr, size_t size, void *caller)
+{
+    // Not interested in small allocations
+    if (!s_enable_heap_log || (size < s_min_heap_log_size)) return;
+
+    // Avoid recursion into malloc hooks
+    if (__atomic_fetch_add(&malloc_trace_reentrant, 1, __ATOMIC_RELAXED) != 0) {
+        __atomic_fetch_sub(&malloc_trace_reentrant, 1, __ATOMIC_RELAXED);
+        return;
+    }
+
+    const char *task_name = "no-task";
+
+    // Only call task APIs when scheduler is running and we have a current task handle.
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+        TaskHandle_t h = xTaskGetCurrentTaskHandle();
+        if (h != NULL) {
+            const char *n = pcTaskGetName(h);
+            if (n && n[0]) task_name = n;
+            else task_name = "unnamed-task";
+        }
+    }
+
+    // Print address of caller (resolve offline with addr2line)
+    // %PLATFORMIO%\tools\toolchain-xtensa-esp-elf\bin\xtensa-esp32-elf-addr2line.exe
+    //   -e .pio\build\lupa-espresso-v1\firmware.elf 0x4010bc2c
+    ets_printf("HEAP %s %u by %p %s\n", op, (unsigned)size, caller, task_name);
+
+    __atomic_fetch_sub(&malloc_trace_reentrant, 1, __ATOMIC_RELAXED);
+}
+
+void * __wrap_malloc(size_t size)
+{
+    void *caller = __builtin_return_address(0);
+    void *p = __real_malloc(size);
+    log_alloc("malloc", p, size, caller);
+    return p;
+}
+
+void * __wrap_calloc(size_t n, size_t size)
+{
+    void *caller = __builtin_return_address(0);
+    void *p = __real_calloc(n, size);
+    log_alloc("calloc", p, n * size, caller);
+    return p;
+}
+
+void * __wrap_realloc(void *ptr, size_t size)
+{
+    void *caller = __builtin_return_address(0);
+    void *p = __real_realloc(ptr, size);
+    log_alloc("realloc", p, size, caller);
+    return p;
+}
+
+// // C++ new/delete forward to wrapped malloc/free
+// void * operator new(size_t size) {
+//     return __wrap_malloc(size);
+// }
+// void operator delete(void* p) noexcept {
+//     __wrap_free(p);
+// }
+// void * operator new[](size_t size) {
+//     return __wrap_malloc(size);
+// }
+// void operator delete[](void* p) noexcept {
+//     __wrap_free(p);
+// }

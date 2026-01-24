@@ -6,6 +6,7 @@
 #include "Debug.h"
 #include "StateMachine.h"
 #include "WebSrv.h"
+#include "Panic.h"
 #include "secrets.h"
 #include <esp_task_wdt.h>
 
@@ -93,6 +94,8 @@ void initOTA() {
         Debug.println("OTA Initiated");
 
         WebSrv::stop();
+        s_enable_heap_log = false; // Panic.c
+
         // esp_task_wdt_reset(); // TODO: "task not found"
         // esp_task_wdt_init(WDT_OTA_TIMEOUT_SEC, true); // TODO: Migrate
 

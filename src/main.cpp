@@ -301,11 +301,11 @@ void loop()
     if ((millis() - t_last) > 100) {
         t_last = millis();
         auto heap = esp_get_free_heap_size();
-        if (heap != heap_last) {
-            int32_t delta = (int32_t)heap - (int32_t)heap_last;
-            Debug.printf("HEAP: %d (%d)\n", heap, delta);
-            heap_last = heap;
-        }
+        // if (heap != heap_last) {
+        //     int32_t delta = (int32_t)heap - (int32_t)heap_last;
+        //     Debug.printf("HEAP: %d (%d)\n", heap, delta);
+        //     heap_last = heap;
+        // }
 
         if (heap < 1024) {
             Debug.printf("WARNING: LOW MEMORY (%d bytes)\n", heap);
