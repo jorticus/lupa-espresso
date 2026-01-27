@@ -6,13 +6,17 @@
 #include "Debug.h"
 #include "hardware.h"
 
-#define ENABLE_DISPLAY
-
 namespace Display {
 
 TFT_eSPI    tft;
+
+#ifdef DUAL_BUFFERS
 TFT_eSprite gfx_left  { &tft };
 TFT_eSprite gfx_right { &tft };
+#else
+TFT_eSprite gfx { &tft };
+ActiveBuffer gfxActiveBuffer;
+#endif
 
 float display_brightness = 0.0f;
 bool backlight_en = false;
@@ -22,6 +26,10 @@ bool initDisplay() {
     digitalWrite(TFT_CS_RIGHT, HIGH);
 
     Debug.println("Initialize LCD...");
+
+    digitalWrite(TFT_BL, LOW);
+    ledcAttachChannel(TFT_BL, 4000, 8, LEDC_CH_DISPLAY);
+    ledcWriteChannel(LEDC_CH_DISPLAY, 0);
 
     digitalWrite(TFT_CS_LEFT, LOW);
     tft.begin();
@@ -35,6 +43,7 @@ bool initDisplay() {
     tft.fillScreen(TFT_BLACK);
     digitalWrite(TFT_CS_RIGHT, HIGH);
 
+#ifdef DUAL_BUFFERS
     // Allocate a buffer for the display
     gfx_left.setColorDepth(8);
     gfx_right.setColorDepth(8);
@@ -47,27 +56,36 @@ bool initDisplay() {
 
     gfx_left.setTextSize(2);
     gfx_right.setTextSize(2);
+#else
+    gfx.setColorDepth(8);
+    if (gfx.createSprite(TFT_WIDTH, TFT_HEIGHT) == nullptr) {
+        Debug.println("ERROR: display buffer allocation failed!");
+        return false;
+    }
+    gfx.setTextSize(2);
+#endif
 
     backlight_en = false;
-
-    digitalWrite(TFT_BL, LOW);
-    ledcAttachChannel(TFT_BL, 4000, 8, LEDC_CH_DISPLAY);
-    ledcWriteChannel(LEDC_CH_DISPLAY, 0);
 
     turnOff();
     return true;
 }
 
 void tftClearCanvas() {
+#ifdef DUAL_BUFFERS
     gfx_left.fillSprite(TFT_BLACK);
     gfx_right.fillSprite(TFT_BLACK);
+#else
+    gfx.fillSprite(TFT_BLACK);
+#endif
 }
 
-void tftUpdateDisplay() {
+void tftUpdateDisplay(ActiveBuffer activeBuffer) {
     digitalWrite(MAX1_CS, HIGH);
     digitalWrite(MAX2_CS, HIGH);
 
 #ifdef ENABLE_DISPLAY
+#ifdef DUAL_BUFFERS
     digitalWrite(TFT_CS_RIGHT, LOW);
     gfx_right.pushSprite(0,0);
     digitalWrite(TFT_CS_RIGHT, HIGH);
@@ -75,6 +93,17 @@ void tftUpdateDisplay() {
     digitalWrite(TFT_CS_LEFT, LOW);
     gfx_left.pushSprite(0,0);
     digitalWrite(TFT_CS_LEFT, HIGH);
+#else
+    if (activeBuffer == ActiveBuffer::Right) {
+        digitalWrite(TFT_CS_RIGHT, LOW);
+        gfx.pushSprite(0,0);
+        digitalWrite(TFT_CS_RIGHT, HIGH);
+    } else {
+        digitalWrite(TFT_CS_LEFT, LOW);
+        gfx.pushSprite(0,0);
+        digitalWrite(TFT_CS_LEFT, HIGH);
+    }
+#endif
 #endif
 
     // Enable backlight

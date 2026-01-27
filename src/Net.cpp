@@ -24,13 +24,17 @@ enum class WifiConnectionStatus {
 static void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (wl_status_t)0) {
     tftClearCanvas();
 
-    UI::Widgets::uiRenderLabelCentered(gfx_right, "WIFI CONNECT", -60, TFT_WHITE);
+#ifdef DUAL_BUFFERS
+    auto& gfx = gfx_right;
+#endif
+
+    UI::Widgets::uiRenderLabelCentered(gfx, "WIFI CONNECT", -60, TFT_WHITE);
 
     switch (state) {
         case WifiConnectionStatus::Connecting:
         {
-            UI::Widgets::uiRenderLabelCentered(gfx_right, "CONNECTING TO", 0, TFT_WHITE);
-            UI::Widgets::uiRenderLabelCentered(gfx_right, secrets::wifi_ssid, 30, TFT_LIGHTGREY);
+            UI::Widgets::uiRenderLabelCentered(gfx, "CONNECTING TO", 0, TFT_WHITE);
+            UI::Widgets::uiRenderLabelCentered(gfx, secrets::wifi_ssid, 30, TFT_LIGHTGREY);
             break;
         }
             break;
@@ -38,14 +42,14 @@ static void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (w
         case WifiConnectionStatus::Connected:
         {
             auto ip_str = WiFi.localIP().toString();
-            UI::Widgets::uiRenderLabelCentered(gfx_right, "CONNECTED", 0, TFT_WHITE);
-            UI::Widgets::uiRenderLabelCentered(gfx_right, ip_str.c_str(), 30, TFT_LIGHTGREY);
+            UI::Widgets::uiRenderLabelCentered(gfx, "CONNECTED", 0, TFT_WHITE);
+            UI::Widgets::uiRenderLabelCentered(gfx, ip_str.c_str(), 30, TFT_LIGHTGREY);
             break;
         }
 
         case WifiConnectionStatus::Failure:
         {
-            UI::Widgets::uiRenderLabelCentered(gfx_right, "ERROR", 0, TFT_WHITE);
+            UI::Widgets::uiRenderLabelCentered(gfx, "ERROR", 0, TFT_WHITE);
 
             const char* err_msg = nullptr;
             switch (err) {
@@ -65,13 +69,13 @@ static void uiRenderWiFiConnect(WifiConnectionStatus state, wl_status_t err = (w
             }
 
             if (err_msg != nullptr) {
-                UI::Widgets::uiRenderLabelCentered(gfx_right, err_msg, 30, TFT_LIGHTGREY);
+                UI::Widgets::uiRenderLabelCentered(gfx, err_msg, 30, TFT_LIGHTGREY);
             }
             break;
         }
     }
 
-    tftUpdateDisplay();
+    tftUpdateDisplay(Display::ActiveBuffer::Right);
 }
 
 #include "esp_wifi.h"

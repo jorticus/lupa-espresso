@@ -2,6 +2,9 @@
 
 #include <TFT_eSPI.h>
 
+#define ENABLE_DISPLAY
+// #define DUAL_BUFFERS
+
 typedef TFT_eSprite GfxCanvas;
 
 #pragma once
@@ -9,8 +12,17 @@ typedef TFT_eSprite GfxCanvas;
 /// @brief Handles updating the TFT display, but not rendering of UI
 namespace Display {
 
+    enum class ActiveBuffer {
+        Left, Right, Both
+    };
+
+    #ifdef DUAL_BUFFERS
     extern GfxCanvas gfx_left;
     extern GfxCanvas gfx_right;
+    #else
+    extern GfxCanvas gfx;
+    // extern ActiveBuffer gfxActiveBuffer;
+    #endif
 
     /// @brief Initialize the TFT display
     bool initDisplay();
@@ -19,7 +31,7 @@ namespace Display {
     void tftClearCanvas();
 
     /// @brief Update TFT with contents of the left/right canvases
-    void tftUpdateDisplay();
+    void tftUpdateDisplay(ActiveBuffer activeBuffer = ActiveBuffer::Both);
 
     /// @brief Set the display backlight brightness
     /// @param brightness 0.0 to 1.0

@@ -32,6 +32,10 @@ static void uiRenderFirmwareUpdate(OtaState state, int param) {
 
     tftClearCanvas();
 
+#ifdef DUAL_BUFFERS
+    auto& gfx = gfx_right;
+#endif
+
     if (state != OtaState::Failure) {
         int progress = param;
         int color = TFT_SKYBLUE;
@@ -39,13 +43,13 @@ static void uiRenderFirmwareUpdate(OtaState state, int param) {
         uint32_t min_angle = 0;
         uint32_t max_angle = 360;
         uint32_t angle = (progress * (max_angle - min_angle) / 100) + min_angle;
-        gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, min_angle, max_angle, TFT_DARKESTGREY, TFT_BLACK, false);
+        gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, min_angle, max_angle, TFT_DARKESTGREY, TFT_BLACK, false);
         if (angle > min_angle) {
-            gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, min_angle, angle, TFT_SKYBLUE, TFT_BLACK, false);
+            gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, min_angle, angle, TFT_SKYBLUE, TFT_BLACK, false);
         }
     }
     else {
-        gfx_right.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, 0, 360, TFT_RED, TFT_BLACK, false);
+        gfx.drawSmoothArc(TFT_WIDTH/2, TFT_HEIGHT/2, TFT_WIDTH/2, (TFT_WIDTH/2)-ringw, 0, 360, TFT_RED, TFT_BLACK, false);
     }
 
     const char* status_str = nullptr;
@@ -63,14 +67,14 @@ static void uiRenderFirmwareUpdate(OtaState state, int param) {
     }
 
     if (status_str != nullptr) {
-        int16_t tw = gfx_right.textWidth(status_str);
+        int16_t tw = gfx.textWidth(status_str);
         int16_t th = 14;
-        gfx_right.setTextColor(TFT_WHITE);
-        gfx_right.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
-        gfx_right.print(status_str);
+        gfx.setTextColor(TFT_WHITE);
+        gfx.setCursor(TFT_WIDTH/2 - tw/2, TFT_HEIGHT/2 - th/2);
+        gfx.print(status_str);
     }
 
-    tftUpdateDisplay();
+    tftUpdateDisplay(Display::ActiveBuffer::Right);
 }
 
 

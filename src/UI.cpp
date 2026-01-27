@@ -84,7 +84,7 @@ void uiRenderWiFiStatus(GfxCanvas& gfx, int32_t x, int32_t y) {
         }
         if (err_msg != nullptr) {
             uiRenderImageCentered(gfx, x, y, ico_wifi_err_16px, TFT_ORANGE);
-            uiRenderLabelCentered(gfx_left, err_msg, 0);
+            uiRenderLabelCentered(gfx, err_msg, 0); // TODO: May need repositioning
         }
         else {
             uiRenderImageCentered(gfx, x, y, ico_wifi_err_16px, TFT_DARKGREY);
@@ -306,6 +306,7 @@ void uiRenderBrewingScreen(GfxCanvas& gfx) {
     // }
 }
 
+#ifdef DUAL_BUFFERS
 /// @brief Render sensors for debugging
 void uiRenderSensorTest()
 {
@@ -341,10 +342,10 @@ void uiRenderSensorTest()
 
     uiRenderTemperatureGauge(gfx_left);
 }
+#endif
 
 /// @brief Render the left UI
-void renderLeft() {
-    auto& gfx = gfx_left;
+void renderLeft(GfxCanvas& gfx) {
 
     uiRenderTemperatureGraph(gfx);
 
@@ -458,8 +459,7 @@ void uiRenderFaultRing(GfxCanvas& gfx) {
 }
 
 /// @brief Render the right UI
-void renderRight() {
-    auto& gfx = gfx_right;
+void renderRight(GfxCanvas& gfx) {
 
     const uint32_t ring_w_min = 10;
 
@@ -650,15 +650,13 @@ void uiRenderGlobalAnimations() {
     }
 }
 
-void uiRenderBackground() {
+void uiRenderBackground(GfxCanvas& gfx) {
     if (uiState == MachineState::Ready) {
-        uiRenderImage(gfx_right, 0, 0, bg_coffee_eye);
-        uiRenderImage(gfx_left, 0, 0, bg_coffee_eye);
+        uiRenderImage(gfx, 0, 0, bg_coffee_eye);
     }
     else {
         // If background image is drawn, we don't need to clear the buffer.
-        gfx_left.fillSprite(TFT_BLACK);
-        gfx_right.fillSprite(TFT_BLACK);
+        gfx.fillSprite(TFT_BLACK);
     }
 }
 
@@ -669,14 +667,19 @@ void render() {
     //     return;
     // }
 
-    uiRenderBackground();
+#ifdef DUAL_BUFFERS
+
+    // With two buffers available, we can render both sides at the same time
+
+    uiRenderBackground(gfx_left);
+    uiRenderBackground(gfx_right);
 
     if (uiState == MachineState::SensorTest) {
         uiRenderSensorTest();
     }
 
-    renderLeft();
-    renderRight();
+    renderLeft(gfx_left);
+    renderRight(gfx_right);
 
     uiRenderGlobalAnimations();
 
@@ -686,13 +689,33 @@ void render() {
 
     auto t3 = millis();
 
+#else
+
+    // With only one buffer, we save memory, but have to draw/update alternating buffers
+
+    uiRenderBackground(gfx);
+    renderLeft(gfx);
+    tftUpdateDisplay(Display::ActiveBuffer::Left);
+
+    uiRenderBackground(gfx);
+    renderRight(gfx);
+    tftUpdateDisplay(Display::ActiveBuffer::Right);
+
+    uiRenderGlobalAnimations();
+
+#endif
+
     // Debug.printf("Render %dms Update %dms\n", (t2-t1), (t3-t2));
 }
 
 void renderFailsafe() {
     // Minimal UI render
     tftClearCanvas();
+#ifdef DUAL_BUFFERS
     uiRenderFaultRing(gfx_right);
+#else
+    uiRenderFaultRing(gfx);
+#endif
     tftUpdateDisplay();
     Display::setBrightness(CONFIG_FULL_BRIGHTNESS);
 }
