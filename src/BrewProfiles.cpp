@@ -30,7 +30,7 @@ namespace BrewControl {
 static const std::array<Stage, 5> s_profileLondinium = {
     SetFlowRate(3.0f),
     WaitUntil(5.0f),
-    RampPressure(9.0f, 0.1f),
+    RampPressure(9.0f, 1.0f),
     WaitUntil(20.0f),
     SetPressure(6.0f)
 };
@@ -55,7 +55,7 @@ static const std::array<Stage, 5> s_profileBloom = {
 static const std::array<Stage, 3> s_profileDeclining = {
     SetPressure(BrewControl::param_brewPressure),  // Start at 9 Bar
     WaitUntil(5.0f),            // Wait for built-in preinfusion
-    RampPressure(1.0f, -0.027f) // Ramp down to 1Bar (Aiming for total 30 sec)
+    RampPressure(1.0f, -0.27f) // Ramp down to 1Bar (Aiming for total 30 sec)
 };
 
 // Slayer shot (1:2 - 1:3 ratio)
@@ -66,9 +66,9 @@ static const std::array<Stage, 6> s_profileSlayerShot = {
     Conditional([](auto& state) { return state.currPressure < 2.0f; }), // Wait for lever to depressurize system
     SetFlowRate(2.0f),
     Conditional([](auto& state) { return state.currPressure >= 3.0f; }),
-    RampPressure(9.0f, +0.1f), // Ramp up to 9 Bar @ 1 Bar/sec (0.1Bar / 100ms)
+    RampPressure(9.0f, +1.0f), // Ramp up to 9 Bar @ 1 Bar/sec (0.1Bar / 100ms)
     WaitUntil(10.0f), // 25 sec?
-    RampPressure(6.0f, -0.1f), // Ramp down to 6 Bar
+    RampPressure(6.0f, -1.0f), // Ramp down to 6 Bar
 };
 
 // Allonge (1:5 - 1:7 ratio) - Filter style (light roasts, grind coarser)

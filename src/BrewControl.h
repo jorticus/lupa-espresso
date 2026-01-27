@@ -19,6 +19,16 @@ namespace BrewControl {
         DynamicProfile,
     };
 
+    typedef struct {
+        float deviation;
+        float effort;
+        float conductance;
+        float pressure_target;
+        float dP;
+        bool collapsed;
+        bool stable;
+    } BrewMetrics;
+
     /// @brief Set the target brew pressure (manual pressure profile)
     void setPressure(float sp);
 
@@ -61,7 +71,8 @@ namespace BrewControl {
 
     /// @brief Return the average delta between the process target and actual value (pressure or flowrate),
     // to determine how closely the shot tracked the desired profile (lower = better)
-    float getTargetError();
+    // float getTargetError();
+    BrewMetrics getMetrics();
 
     /// @brief Return the current PID setpoint (could be pressure or flowrate, check getMode())
     float getCurrentSetpoint();

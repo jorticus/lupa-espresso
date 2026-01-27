@@ -155,13 +155,14 @@ void endBrew()
     brewStats.end_brew_time = millis();
     unsigned long brew_duration = brewStats.end_brew_time - brewStats.start_brew_time;
 
-    brewStats.avg_target_error = BrewControl::getTargetError();
+    auto metrics = BrewControl::getMetrics();
     brewStats.total_volume = SensorSampler::getTotalFlowVolume();
 
     Debug.println("-- BREW STATISTICS --");
-    Debug.printf("  Time:  %d ms\n", brew_duration);
-    Debug.printf("  Error: %.1f\n", brewStats.avg_target_error);
-    Debug.printf("  MeanP: %.1f Bar\n", brewStats.avg_brew_pressure);
+    Debug.printf("  Time:           %d ms\n", brew_duration);
+    Debug.printf("  Deviation:      %.1f\n", metrics.deviation);
+    Debug.printf("  Effort:         %.2f\n", metrics.effort);
+    Debug.printf("  MeanP:          %.1f Bar\n", brewStats.avg_brew_pressure);
     Debug.printf("  Vol(preinfuse): %.1f mL\n", brewStats.preinfuse_volume);
     Debug.printf("  Vol(total):     %.1f mL\n", brewStats.total_volume);
     Debug.println();

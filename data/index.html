@@ -101,10 +101,12 @@
             <!-- <div><span>READY</span></div> -->
             <div><span class="panel" id="lbl_state">...</span></div>
             <div><h3>PROFILE</h3><span id="lbl_profile">Manual</span></div>
-            <div><h3>PRESSURE</h3><span id="lbl_pressure">-</span></div>
-            <div><h3>FLOW</h3><span id="lbl_flow">-</span></div>
-            <div><h3>VOLUME</h3><span id="lbl_volume">-</span></div>
-            <div><h3>DEVIATION</h3><span id="lbl_deviation">-</span></div>
+            <div style="min-width:100px"><h3>PRESSURE</h3><span id="lbl_pressure">-</span></div>
+            <div style="min-width:88px"><h3>FLOW</h3><span id="lbl_flow">-</span></div>
+            <div style="min-width:78px"><h3>VOLUME</h3><span id="lbl_volume">-</span></div>
+            <div style="min-width:40px"><h3>DEV</h3><span id="lbl_deviation">-</span></div>
+            <div style="min-width:40px"><h3>EFF</h3><span id="lbl_effort">-</span></div>
+            <div style="min-width:40px"><h3>CON</h3><span id="lbl_conductance">-</span></div>
         </div>
         <h2>☕ LUPA Espresso</h2>
     </div>
@@ -222,14 +224,21 @@
                         return [ 0, chart1_t_max ];
                     }
                 },
-                y: {
+                y_pressure: {
                     range: [0, 12.0],
-
+                },
+                y_flow: {
+                    range: [0.0, 12.0], // TODO
+                },
+                y_score: {
+                    range: [0.0, 1.0],
                 }
             },
             axes: [
                 { ...axesOptions, grid: { show: false } },
-                { ...axesOptions, show: true, label: "Pressure", }
+                { ...axesOptions, show: true, label: "Pressure", scale: 'y_pressure', size: 20, gap: 0 },
+                // { ...axesOptions, grid: { show: false }, show: true, label: "Flow Rate", scale: 'y_flow', size: 20, gap: 0 },
+                // { ...axesOptions, show: true, label: "Score", },
             ],
             series: [
                 {
@@ -240,19 +249,44 @@
                     stroke: '#87b827',
                     value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' Bar',
                     // width: 1/devicePixelRatio,
-                    points: { show: false }
+                    points: { show: false },
+                    scale: 'y_pressure'
                 },
                 {
                     label: 'Flow',
                     stroke: '#66d9ef',
                     value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + ' mL/s',
-                    points: { show: false }
+                    points: { show: false },
+                    scale: 'y_flow'
                 },
                 {
                     label: 'Target',
                     stroke: '#e6f8c1',
                     value: (self, rawValue) => rawValue == null ? '' : rawValue.toFixed(1) + '',
-                    points: { show: false }
+                    points: { show: false },
+                    scale: 'y_pressure'
+                },
+
+                {
+                    label: 'Eff',
+                    stroke: '#999',
+                    points: { show: false },
+                    dash: [3, 2],
+                    scale: 'y_score'
+                },
+                {
+                    label: 'Con',
+                    stroke: '#999',
+                    points: { show: false },
+                    dash: [3, 2],
+                    scale: 'y_score'
+                },
+                {
+                    label: 'dP',
+                    stroke: '#fffc5c',
+                    points: { show: false },
+                    dash: [3, 2],
+                    scale: 'y_score'
                 },
             ],
         };
@@ -315,10 +349,16 @@
             chart2Options.width = ctx2.clientWidth;
             chart2Options.height =  ctx2.clientHeight - 20;
         
-            data1 = [new Array(), new Array(), new Array(), new Array()];
+            data1 = [];
+            for (var i = 0; i < chart1Options.series.length; i++) {
+                data1.push(new Array());
+            }
             chart1 = new uPlot(chart1Options, data1, ctx1);
 
-            data2 = [new Array(), new Array(), new Array()];
+            data2 = [];
+            for (var i = 0; i < chart2Options.series.length; i++) {
+                data2.push(new Array());
+            }
             chart2 = new uPlot(chart2Options, data2, ctx2);
         }
 
@@ -338,12 +378,18 @@
             }
             is_brewing = response.pull;
 
-            if (is_brewing) {
+            const is_incomplete = (time1 > 0 && time1 < (chart1_t_max_initial - 0.1));
+            if (is_brewing || is_incomplete) 
+            {
                 data1[0].push(time1);
                 data1[1].push(response.p1);
 
                 data1[2].push(response.flow * 10.0);
                 data1[3].push(response.setpoint);
+
+                data1[4].push(response.effort);
+                data1[5].push(response.conductance);
+                data1[6].push(response.dP + 0.5);
 
                 chart1.setData(data1);
 
@@ -405,7 +451,9 @@
             lbl_pressure.innerText  = response.p1.toFixed(2) + ' Bar';
             lbl_flow.innerText      = response.flow.toFixed(2) + ' mL/s';
             lbl_volume.innerText    = response.vol.toFixed(2) + ' mL';
-            lbl_deviation.innerText    = response.avg_err.toFixed(2);
+            lbl_deviation.innerText    = response.deviation.toFixed(2);
+            lbl_effort.innerText       = response.effort.toFixed(2);
+            lbl_conductance.innerText  = response.conductance.toFixed(2);
 
             lbl_boiler_power.innerText = response.b_pwr.toFixed(0) + ' W';
             lbl_boiler_indicator.className = (response.b_on) ? 'panel indicator-on' : 'panel';
@@ -433,7 +481,10 @@
             const flow      = dv.getFloat32(off, true); off += 4;
             const vol       = dv.getFloat32(off, true); off += 4;
             const setpoint  = dv.getFloat32(off, true); off += 4;
-            const avg_err   = dv.getFloat32(off, true); off += 4;
+            const deviation   = dv.getFloat32(off, true); off += 4;
+            const effort    = dv.getFloat32(off, true); off += 4;
+            const conductance = dv.getFloat32(off, true); off += 4;
+            const dP        = dv.getFloat32(off, true); off += 4;
             const is_flowing= dv.getUint8(off) !== 0; off += 1;
             const pid_i     = dv.getFloat32(off, true); off += 4;
             const pid_d1    = dv.getFloat32(off, true); off += 4;
@@ -447,26 +498,29 @@
             const mem       = dv.getUint32(off, true); off += 4;
 
             return {
-                "version": version,
-                "t1": t1,
-                "t2": t2,
-                "t3": t3,
-                "p1": p1,
-                "flow": flow,
-                "vol": vol,
-                "setpoint": setpoint,
-                "avg_err": avg_err,
-                "is_flowing": is_flowing,
-                "pid_i": pid_i,
-                "pid_d1": pid_d1,
-                "pid_d2": pid_d2,
-                "t_sp": t_sp,
-                "b_pwr": b_pwr,
-                "b_on": b_on,
+                version,
+                t1,
+                t2,
+                t3,
+                p1,
+                flow,
+                vol,
+                setpoint,
+                deviation,
+                effort,
+                conductance,
+                dP,
+                is_flowing,
+                pid_i,
+                pid_d1,
+                pid_d2,
+                t_sp,
+                b_pwr,
+                b_on,
                 "state": MachineState[state],
-                "pull": pull,
-                "brew": brew,
-                "mem": mem
+                pull,
+                brew,
+                mem
             };
         }
 

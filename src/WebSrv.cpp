@@ -64,7 +64,10 @@ struct SensorPacket {
     float   flow;
     float   vol;
     float   setpoint;
-    float   avg_err;
+    float   deviation;
+    float   effort;
+    float   conductance;
+    float   dP;
     uint8_t is_flowing;
 
     // Boiler
@@ -115,9 +118,15 @@ static void packSensorPacket(SensorPacket &pkt) {
     pkt.p1 = SensorSampler::getPressure();
     pkt.flow = SensorSampler::getFlowRate();
     pkt.vol = SensorSampler::getTotalFlowVolume();
-    pkt.setpoint = BrewControl::getCurrentSetpoint();
-    pkt.avg_err = BrewControl::getTargetError();
+    // pkt.setpoint = BrewControl::getCurrentSetpoint();
     pkt.is_flowing = SensorSampler::isFlowing() ? 1 : 0;
+
+    auto metrics = BrewControl::getMetrics();
+    pkt.deviation   = metrics.deviation;
+    pkt.effort      = metrics.effort;
+    pkt.conductance = metrics.conductance;
+    pkt.setpoint    = metrics.pressure_target;
+    pkt.dP          = metrics.dP;
 
     pkt.pid_i  = HeatControl::pid_i.last();
     pkt.pid_d1 = HeatControl::pid_d.last();

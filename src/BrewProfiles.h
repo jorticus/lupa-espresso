@@ -17,7 +17,8 @@ namespace ProfileDefs {
 
 class State {
 public:
-    uint32_t timeElapsed;
+    uint32_t timeElapsedMs;
+    float dt_s;
     float currPressure;
     float setPressure;
     float currFlowRate;
@@ -136,7 +137,7 @@ public:
             return true; // Advance stage
         }
         else {
-            BrewControl::setPressure(state.setPressure + rate);
+            BrewControl::setPressure(state.setPressure + (rate * state.dt_s));
             return false; // Do not advance
         }
     }
@@ -153,17 +154,17 @@ protected:
 class WaitUntil : public StageBase {
 public:
     WaitUntil(uint32_t timestamp_sec) :
-        timestamp_sec(timestamp_sec)
+        timestamp_ms(timestamp_sec * 1000)
     { }
 
     bool step(const State& state) const override {
-        return (state.timeElapsed >= this->timestamp_sec);
+        return (state.timeElapsedMs >= this->timestamp_ms);
     }
 
-    void print() const override { Debug.printf("Wait Until: %d s\n", timestamp_sec); }
+    void print() const override { Debug.printf("Wait Until: %d ms\n", timestamp_ms); }
 
 protected:
-    const uint32_t timestamp_sec;
+    const uint32_t timestamp_ms;
 };
 
 /// @brief Conditional waiting until preinfusion has completed (approximately).
