@@ -11,6 +11,8 @@
 #include "Adafruit_MAX31865.h"
 #include "PressureTransducer.h"
 #include "PulseCounter.h"
+#include "BrewControl.h"
+#include "Task.h"
 #include "config.h"
 
 
@@ -106,7 +108,7 @@ static const float filter_21tap_5hz[] = {
 };
 
 // Automatic FIR filters of type FirFilter<N_TAPS> { taps }
-static auto filter_pressure     = MAKE_FIR_FILTER(filter_11tap_1hz);
+static auto filter_pressure     = MAKE_FIR_FILTER(filter_21tap_10hz);
 static auto filter_temperature_1  = MAKE_FIR_FILTER(filter_21tap_10hz);   
 static auto filter_temperature_2  = MAKE_FIR_FILTER(filter_21tap_10hz);   
 
@@ -114,6 +116,7 @@ static auto filter_flowrate     = MAKE_FIR_FILTER(filter_11tap_1hz);    // 10Hz 
 static auto filter2_flowrate     = MAKE_FIR_FILTER(filter_11tap_1hz);
 
 static float value_pressure = 0.0f;
+static float value_pressure_raw = 0.0f;
 static float value_temperature_1 = 0.0f;
 static float value_temperature_2 = 0.0f;
 static float value_flow_rate = 0.0f;
@@ -150,6 +153,7 @@ static void onSamplerTimer(TimerHandle_t timer) {
     BaseType_t woken = pdFALSE;
     // Signal the sampler task which will preempt other running tasks
     vTaskNotifyGiveFromISR(samplerTaskHandle, &woken);
+    
     portYIELD_FROM_ISR(woken);
 }
 
@@ -165,18 +169,23 @@ static void samplerTask(void* pv) {
             auto sample = pressure.readSample();
 
             if (sample.is_valid) {
-                filter_pressure.add(sample.pressure);
+                value_pressure_raw = sample.pressure * 0.0001f;
+                filter_pressure.add(value_pressure_raw);
+            } else {
+                value_pressure_raw = 0.0f;
             }
 
             if (filter_pressure.isReady()) {
                 // Debug.printf("P=%d\n", sample.pressure);
-                value_pressure = filter_pressure.get() * 0.0001f;
+                value_pressure = filter_pressure.get();
                 is_valid_pressure = true;
             }
 
             pressure.startSample();
         }
 
+        // Trigger next tick of the brew control loop
+        BrewControl::notifyTick();
         portYIELD();
 
         if (isTemperature1Available) {
@@ -300,7 +309,8 @@ static void samplerTask(void* pv) {
                     // The flow rate out of the grouphead is the difference between
                     // flow into the system (flow1) minus the flow out of the system (flow2),
                     // though this does not account for filling of the preinfusion chamber.
-                    auto diff = (flow1_hz - flow2_hz);
+                    // auto diff = (flow1_hz - flow2_hz);
+                    auto diff = flow1_hz;
                     //Debug.printf("Flow A:%.3f B:%.3f mL/s\n", flow1_hz, flow2_hz);
 
                     // The combined flowrate is a value between 0.0 and 1.0
@@ -476,7 +486,7 @@ bool initialize() {
     }
 
     // Note: Task must be high priority since we must make the sampling intervals
-    xTaskCreatePinnedToCore(samplerTask, "Sensors", 2*1024, nullptr, 5, &samplerTaskHandle, 1);
+    xTaskCreatePinnedToCore(samplerTask, "Sensors", 2*1024, nullptr, TASK_PRIORITY_SENSOR_SAMPLER, &samplerTaskHandle, CORE1);
 
     // Timer to trigger the sampling task
     timer = xTimerCreate("SensorSamplerT", pdMS_TO_TICKS(sampleRateMs), pdTRUE, nullptr, onSamplerTimer);
@@ -562,6 +572,10 @@ float getEstimatedGroupheadTemperature() {
 
 float getPressure() {
     return value_pressure;
+}
+
+float getPressureUnfiltered() {
+    return value_pressure_raw;
 }
 
 float getFlowRate() {

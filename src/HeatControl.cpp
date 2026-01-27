@@ -5,6 +5,7 @@
 #include "MqttParamManager.h"
 #include "PID.h"
 #include "IO.h"
+#include "BrewControl.h"
 #include "Debug.h"
 #include "hardware.h"
 #include "config.h"
@@ -195,7 +196,8 @@ void processControlLoop()
     if (!SensorSampler::isTemperatureValid() || 
         IO::isWaterTankLow() || 
         IO::isBoilerTankLow() ||
-        (operating_profile == BoilerProfile::Off))
+        (operating_profile == BoilerProfile::Off) ||
+        BrewControl::getMode() == BrewControl::BrewMode::TuningPressure)
     {
         IO::setHeatPower(0.0f);
     }

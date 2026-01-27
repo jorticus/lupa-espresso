@@ -85,7 +85,9 @@ HAComponent<Component::Select> select_profile(context,
     BrewControl::setProfile, // Callback
     {
         "Fixed Pressure",
-        "Fixed Flow Rate"
+        "Fixed Flow Rate",
+        "Tuning: Pressure",
+        "Tuning: Flow Rate",
         // Dynamic profiles will be added later
     }, 
     "mdi:chart-sankey"

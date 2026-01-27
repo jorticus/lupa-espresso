@@ -101,9 +101,7 @@ bool initCritical() {
     IO::initGpio();
     DebugLogger::init();
 
-    if (!Display::initDisplay()) {
-        return false;
-    }
+    Display::initDisplay();
 
     Net::initWiFi();
     OTA::initOTA();
@@ -163,7 +161,6 @@ void taskCoreFunc(void* ctx) {
             State::uiState != State::MachineState::Off)
         {
             HeatControl::processControlLoop();
-            BrewControl::processControlLoop();
         }
 
     }
@@ -224,9 +221,9 @@ void initSystem() {
 #endif
 
     Serial.println("Start tasks");
-    xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", 3*1024, nullptr, 3, &task_core,    CORE1);
-    xTaskCreatePinnedToCore(taskNetworkFunc,  "NetTask",  4*1024, nullptr, 2, &task_network, CORE1);
-    xTaskCreatePinnedToCore(taskRenderUiFunc, "UiTask",   3*1024, nullptr, 1, &task_ui,      CORE1);
+    xTaskCreatePinnedToCore(taskCoreFunc,     "CoreTask", 3*1024, nullptr, TASK_PRIORITY_CORE,      &task_core,    CORE1);
+    xTaskCreatePinnedToCore(taskNetworkFunc,  "NetTask",  4*1024, nullptr, TASK_PRIORITY_NETWORK,   &task_network, CORE1);
+    xTaskCreatePinnedToCore(taskRenderUiFunc, "UiTask",   3*1024, nullptr, TASK_PRIORITY_UI,        &task_ui,      CORE1);
 
     Serial.println("System init done");
 }

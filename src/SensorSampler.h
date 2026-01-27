@@ -39,6 +39,7 @@ namespace SensorSampler {
     /// @brief Current grouphead pressure
     /// @return Pressure, in Bar
     float getPressure();
+    float getPressureUnfiltered();
 
     /// @brief Current input flowrate
     /// @return Flowrate, in mL/s

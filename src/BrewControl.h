@@ -34,8 +34,8 @@ namespace BrewControl {
     /// @brief Initialize control loop parameters
     void initControlLoop();
 
-    /// @brief Calculate next tick of the control loop
-    void processControlLoop();
+    /// @brief Trigger next tick of the control loop
+    void notifyTick();
 
     /// @brief Start brew profiling (activate pump)
     void start();

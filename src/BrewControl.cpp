@@ -3,45 +3,20 @@
 #include "BrewControl.h"
 #include "BrewProfiles.h"
 #include "MqttParamManager.h"
-//#include "HomeAssistant.h"
-#include "PID.h"
 #include "IO.h"
+#include "HeatControl.h"
 #include "Debug.h"
+#include "Task.h"
 #include "hardware.h"
 #include "config.h"
 
 #include <span>
 #include <array>
 
-// Default tunings
-namespace Defaults {
-    // How often PID is calculated
-    // NOTE: If this is changed, the coefficients will need to be updated too
-    static const unsigned long UpdatePeriodMs = 100;
+/// @brief Preinfusion delay
+/// Don't run the control loop until preinfusion has completed
+unsigned long t_shot_preinfuse_ms = 4000;
 
-    static const float Kp = 0.1f;
-    static const float Ki = 0.01f; //Kp / 13.0f; // Ki = Kp / Tn
-    static const float Kd = 0.0f;  //Kp * 5.0f; // Kd = Kp * Tv
-    
-    //static const float SetPoint = CONFIG_TARGET_BREW_PRESSURE;
-
-    // Static offset needed to reach steady-state, determined empirically
-    // Helps prevent integral windup
-    static const float PlantOffset = 0.660f;
-
-    // Only apply integral when within this range of setpoint,
-    // to avoid integral windup during initial ramp up of pressure
-    static const float RegulationRange = 2.0f;
-
-    // Pressure which we must reach before switching on PID regulation
-    static const float BeginRegulationPressure = 2.0f;
-    static const float EndRegulationPressure = 1.0f;
-};
-
-static fPID pid;
-
-static bool s_run = false;
-static bool s_inrange = false;
 
 namespace BrewControl {
 
@@ -51,94 +26,36 @@ enum class ControlMode {
     FlowRate
 };
 
-static BrewMode s_brewMode = BrewMode::ManualPressure;
+static TaskHandle_t controlTaskHandle;
+
+static BrewMode s_brewMode = BrewMode::TuningPressure;
 static ControlMode s_controlMode = ControlMode::Pressure;
 
 static uint64_t s_startTime = 0;
 
+static bool s_run = false;
 static float s_meanErrorPressure = 0.0f;
 static int s_meanCount = 0;
 static bool s_triggerBrewEnd = false;
 
-static int s_paramInitCount = 8;
-static float s_pidSetpointPressure = 0.0f;
-static float s_pidSetpointFlowRate = 0.0f;
-
-static void updatePidCoefficients();
-
-// Configuration parameters to expose to MQTT
-MqttParam::Parameter<float> param_bar_kp("pid/bar/kp", Defaults::Kp,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_bar_ki("pid/bar/ki", Defaults::Ki,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_bar_kd("pid/bar/kd", Defaults::Kd,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_bar_po("pid/bar/po", Defaults::PlantOffset,   [] (float val) { updatePidCoefficients(); });
-
-MqttParam::Parameter<float> param_flow_kp("pid/flow/kp", Defaults::Kp,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_flow_ki("pid/flow/ki", Defaults::Ki,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_flow_kd("pid/flow/kd", Defaults::Kd,            [] (float val) { updatePidCoefficients(); });
-MqttParam::Parameter<float> param_flow_po("pid/flow/po", 0.0f,                    [] (float val) { updatePidCoefficients(); });
+static float s_setpointPressure = 0.0f;
+static float s_setpointFlowRate = 0.0f;
 
 MqttParam::Parameter<float> param_brewPressure("brew/pressure", CONFIG_TARGET_BREW_PRESSURE, [] (float val) { 
+    s_setpointPressure = val;
     if (s_brewMode == BrewMode::ManualPressure) setPressure(val);
 });
 MqttParam::Parameter<float> param_brewFlowRate("brew/flow",     1.0f, [] (float val) {
+    s_setpointFlowRate = val;
     if (s_brewMode == BrewMode::ManualFlow) setFlowRate(val);
 });
 
+static std::string s_dynamicProfileName;
 static ProfileDefs::Profile s_dynamicProfile;
 static int s_profileStageIndex = 0;
 static int s_profileStageLastIndex = -1;
 
-void initControlLoop()
-{
-    pid.reset();
-
-    // Output between 0-100% duty cycle of pump
-    pid.setOutputLimits(0.0f, 1.0f);
-
-    s_pidSetpointPressure = param_brewPressure.value();
-    s_pidSetpointFlowRate = param_brewFlowRate.value();
-
-    // pid.setParameters(Defaults::Kp, Defaults::Ki, Defaults::Kd);
-    // pid.setSetpoint(CONFIG_TARGET_BREW_PRESSURE);
-    // pid.setPlantOffset(Defaults::PlantOffset);
-    pid.setRegulationRange(Defaults::RegulationRange);
-    //pid.setSampleTime(Defaults::UpdatePeriodMs); // TODO: tunings were calculated with 1000ms
-
-    pid.setDebugPrints(true);
-
-    updatePidCoefficients();
-
-    pid.setSetpoint((s_controlMode == ControlMode::Pressure) ? s_pidSetpointPressure : s_pidSetpointFlowRate);
-}
-
-static void updatePidCoefficients() {
-    // Skip initial update of coeffs
-    if (s_paramInitCount > 0) {
-        s_paramInitCount--;
-        return;
-    }
-
-    // TODO: We're probably going to want two PID controllers,
-    // so that in flow-regulation mode we can still limit the maximum pressure to 10Bar or so.
-
-    bool sel = (s_controlMode == ControlMode::Pressure);
-    float kp = sel ? param_bar_kp.value() : param_flow_kp.value();
-    float ki = sel ? param_bar_ki.value() : param_flow_ki.value();
-    float kd = sel ? param_bar_kd.value() : param_flow_kd.value();
-    float po = sel ? param_bar_po.value() : param_flow_po.value();
-
-    pid.setParameters(kp, ki, kd);
-    pid.setPlantOffset(po);
-    
-    pid.reset();
-
-    Debug.printf("Brew PID Parameters:\n\tKp: %.4f\n\tKi: %.4f\n\tKd: %.4f\n\tOf: %.4f\n", 
-        pid.getKp(),
-        pid.getKi(),
-        pid.getKd(),
-        po
-    );
-}
+static TaskHandle_t controlLoopTaskHandle;
 
 static void setControlMode(ControlMode mode) {
     if (s_controlMode != mode) {
@@ -158,86 +75,10 @@ static void setControlMode(ControlMode mode) {
                 break;
         }
 
-        pid.reset();
-        updatePidCoefficients();
-
         IO::setPump(false);
     }
 }
 
-
-#if false // Tuning
-void publishTuningData(float pid_input, float pid_output) {
-    float t_sec = millis() * 0.001f;
-    char s[50];
-
-    snprintf(s, sizeof(s), "%.1f,%.2f,%.1f", 
-        t_sec,
-        pid_input,
-        pid_output
-    );
-    Debug.printf("Tuning: %s\n", s);
-    HomeAssistant::publishData("lupa/tuning/pressure", s);
-}
-
-const float tuningPhaseSetpoint[] = {
-    20.0f,
-    40.0f,
-    60.0f,
-    80.0f,
-    100.0f,
-    0.0f
-};
-
-float calculateTuningTick(float pid_input) {
-    static float output = 0.0f;
-    static unsigned long tuning_interval_ms = 1*60*1000;
-    static float last_input = 0.0f;
-    static unsigned long t_last = 0;
-    static int tuning_phase = 0;
-    const int n_phases = sizeof(tuningPhaseSetpoint)/sizeof(tuningPhaseSetpoint[0]) * 2;
-
-    if (t_last == 0) {
-        t_last = millis();
-        last_input = pid_input;
-    }
-
-    // // 100% if below setpoint, 0% if above, with 1C hysteresis
-    // if (pid_input < (CONFIG_BOILER_TUNING_TEMPERATURE_C + 1.0f)) {
-    //     pid_output = 100.0f;
-    // }
-    // else if (pid_input > (CONFIG_BOILER_TUNING_TEMPERATURE_C - 1.0f)) {
-    //     pid_output = 0.0f;
-    // }
-
-    if ((millis() - t_last) > tuning_interval_ms) {
-        t_last = millis();
-
-        if (tuning_phase == n_phases) {
-            output = 0.0f;
-            Debug.println("[ TUNING DONE ]");
-        }
-        else {
-            tuning_phase++;
-            Debug.printf("[ TUNING PHASE: %d ]\n", tuning_phase);
-            if ((tuning_phase & 1) == 0) {
-                // odd numbers
-                output = 0.0f; 
-                tuning_interval_ms = 2*60*1000; // cool
-            }
-            else {
-                // even numbers
-                output = tuningPhaseSetpoint[tuning_phase >> 1];
-                tuning_interval_ms = 2*60*1000; // heat
-            }
-            Debug.printf("Setpoint: %.1f\n", output);
-            Debug.printf("Interval: %dms\n", tuning_interval_ms);
-        }
-    }
-
-    return output;
-}
-#endif
 
 void disableOutput() {
     IO::setPump(false);
@@ -258,8 +99,7 @@ void setPressure(float sp) {
     }
 
     setControlMode(ControlMode::Pressure);
-    pid.setSetpoint(sp);
-    s_pidSetpointPressure = sp;
+    s_setpointPressure = sp;
 }
 
 void setFlowRate(float sp) {
@@ -271,8 +111,7 @@ void setFlowRate(float sp) {
     }
 
     setControlMode(ControlMode::FlowRate);
-    pid.setSetpoint(sp);
-    s_pidSetpointFlowRate = sp;
+    s_setpointFlowRate = sp;
 }
 
 
@@ -282,9 +121,6 @@ void processDynamicProfile(const ProfileDefs::State& state)
     if (s_profileStageIndex >= numStages) {
         return; // No more steps
     }
-
-    Debug.printf("STATE: p=%.1f f=%.1f pt=%.1f ft=%.1f\n", 
-        state.currPressure, state.currFlowRate, state.setPressure, state.setFlowRate);
 
     // Loop until no more stages can be advanced
     bool advance = false;
@@ -307,78 +143,293 @@ void processDynamicProfile(const ProfileDefs::State& state)
     while (advance && (s_profileStageIndex < numStages));
 }
 
-void processControlLoop()
-{
-    static unsigned long t_last = 0;
-    static unsigned long t_last_pid = 0;
-    static float pid_output = 0.0f;
-    static int tuning_phase = 0;
+/// @brief Advanced pressure profiling control loop
+class ProController {
+public:
 
-    auto t_now = millis();
+    //Adjustable controller coefficients
 
-    if (s_run)
+    /// @brief Maximum slew rate (Bar/s)
+    /// Should be slower than the pressure sensor response time
+    float dP_max_slope = 30.0f;
+
+    /// @brief Proportional gain
+    /// Adjust until steady state achieved with no oscillation
+    float Kp = 0.3f; // Pressure -> slope gain
+
+    /// @brief Leak compensation forward gain (proportional to P)
+    /// Adjust until pressure matches target
+    float Kff = 0.1f;
+
+    /// @brief Leak bias integrator gain (keep very small!)
+    float Ki_trim = 0.004f; // Keep very small
+
+private:
+
+    // Timing
+    const float dt = 0.100f; // 100ms
+    const float inv_dt = 1.0f / dt;
+    
+
+    // Pressure limits
+    const float P_min = 0.0f;
+    const float P_max = 12.0f;
+
+    // Actuator limits
+    const float u_min = 0.1f;
+    const float u_max = 1.0f;
+
+
+    const float u_bias_min = 0.0f; // -0.2f;
+    const float u_bias_max = 1.0f; // 0.2f;
+
+    // Gating/Noise control
+    const float P_deadband = 0.1f; // Bar
+    const float dP_ref_tol = 0.02f; // Bar/s
+
+    // Heuristics
+    const float P_regulation_range = 3.0f; // Bar
+    const float P_shot_start = 2.0f; // Bar
+    const float dP_drop_max = -3.0f; // bar/s (Sudden drop)
+    const float collapse_hold_time = 0.3f; // s
+    const float u_recover = 1.0f;
+    const float u_bias_initial = 0.0f;
+
+    // Filtering
+    const float time_constant = 0.01f; // s (Filter time constant)
+    const float cutoff_rads = (1.0 * exp(-dt / time_constant)) / dt;  // Discrete-time form of N=1/Tau
+
+    // State
+    unsigned long t_shot_start = 0;
+    unsigned long t_shot_last = 0;
+    float P_ref = 0.0f; // Internal pressure trajectory
+    float u = 0.0f; // Control output
+    float u_bias = u_bias_initial; // Slow trim
+    float P_prev = 0.0f;
+    float dP_filt = 0.0f;
+    float G_prev = 0.0f;
+    float collapse_timer = 0.0f;
+    // bool shot_active = false;
+
+public:
+    void reset()
     {
-        float in_pressure = SensorSampler::getPressure();
-        float in_flowrate = SensorSampler::getFlowRate();
-        float pid_input = (s_controlMode == ControlMode::Pressure) ? in_pressure : in_flowrate;
+        P_ref = 0.0f;
+        u = 0.0f;
+        P_prev = 0.0f;
+        dP_filt = 0.0f;
+        G_prev = 0.0f;
+        t_shot_start = millis();
+        t_shot_last = t_shot_start;
+
+        collapse_timer = 0.0f;
+    }
+
+    /// @brief Pressure-profiling control loop
+    /// @param P_cmd 
+    /// @param P_meas 
+    /// @return 
+    float tick(float P_cmd, float P_meas)
+    {
+        // The grouphead acts like a leaky integrator, where applying a constant output will cause
+        // the pressure to rise until it hits saturation, and zeroing output will allow pressure to collapse. 
+        //
+        // Trying to control this with a standard PID loop will cause problems since the two integrators will be unstable.
+        // This can be mitigated by using a very low integrator term, but it's hard to get the loop to converge.
+        //
+        // Instead, we use a specialized control loop where we are controlling the rate of change 
+        // of pressure (dP), which itself is controlled by a simple P term. 
+        //
+
+        // Timebase
+        unsigned long t_now = millis();
+        unsigned long t_delta = (t_now - t_shot_last);
+        t_shot_last = t_now;
+
+        float dt_s = (float)(t_delta) / 1000.0f;
+        float inv_dt_s = 1.0f / dt_s;
+
+        // Drive to 100% until we get close to the setpoint
+        if (P_meas < (P_cmd - P_regulation_range)) {
+            P_ref = P_meas;
+            return 1.0f;
+        }
+
+        // Pressure trajectory (slew rate limited)
+        // This updates the target rate of change of pressure (dP) to move towards the desired setpoint (P_cmd)
+
+        float dP_cmd = P_cmd - P_ref;
+        float max_step = dP_max_slope * dt_s;
+
+        dP_cmd = clamp(dP_cmd, -max_step, max_step); // Slew rate limiter
+
+        P_ref += dP_cmd; // Accumulate internal pressure reference
+
+        P_ref = clamp(P_ref, P_min, P_max); // Limit pressure to range of sensor
+
+        // Proportional control term
+
+        float e = P_ref - P_meas;
+
+        // Deadband for noise
+        if (fabs(e) < P_deadband) {
+            e = 0.0f;
+        }
+
+        u = Kp * e;
+
+        float dP_meas = (P_meas - P_prev) * inv_dt_s; // [S] Derivative
+        P_prev = P_meas;
+
+        // const float tau = 0.05f;
+        // const float alpha = dt / (tau + dt);
+        // dP_filt = dP_filt + alpha * (dP_meas - dP_filt);
+        dP_filt = dP_filt * dt_s * cutoff_rads * (dP_meas - dP_filt); // [N / (N + S)] first order LPF
+
+        // dP_est = (P_meas - P_ref_prev) * inv_dt_s;
+        // dP_filt = lowpass(dP_est) 
+
+        if (detectPuckCollapse(dP_filt, dt_s)) {
+        //     u = u_recover;
+        //     u_bias = 0.0f;
+        //     return u;
+        }
+
+        // Slow bias trim
+        // We do still use an integrating term (u_bias) here to try to compensate for the leaky
+        // behaviour, but it is designed to ramp slowly and not impact the loop itself too much.
+        // The value of u_bias is updated whenever it is detected that we are holding a flat pressure,
+        // since that is the only condition under which we can estimate the leakage.
+        //
+        // TOOD: Just adjust Kff since that is doing the same thing...
+
+        bool flat_hold = (fabsf(dP_cmd) < dP_ref_tol * dt_s) && (u > u_min && u < u_max);
+        if (flat_hold) {
+            u_bias += Ki_trim * e * dt_s;
+            u_bias = clamp(u_bias, u_bias_min, u_bias_max);
+        }
+
+        // Feed-forward leak estimation
+        float u_ff = Kff * P_ref;
+
+        // Output
+        // PWM duty clamped to 0.0 - 1.0
+
+        float u_out = u + u_ff + u_bias;
+
+        u_out = clamp(u_out, u_min, u_max);
+
+        float G = estimatePuckConductance(P_meas, u_out, dP_filt);
+
+        unsigned long td = millis() - t_shot_last;
+        Debug.printf("LOOP: %.1fs P=%.1f P_ref=%.3f dP_cmd=%.4f dP_filt=%.3f e=%.3f u=%.2f u_ff=%.2f u_bias=%.2f G=%.2f fh=%d td=%u\n", dt_s, P_meas, P_ref, dP_cmd, dP_filt, e, u, u_ff, u_bias, G, flat_hold, td);
+
+        return u_out;
+    }
+
+private:
+
+    inline float clamp(float f, float min, float max) {
+        if (f > max) return max;
+        if (f < min) return min;
+        return f;
+    }
+
+    bool detectPuckCollapse(float dP_filt, float dt_s) {
+        // Puck collapse detection
+        // We can detect if the puck has collapsed by detecting if the rate of change of pressure (dP)
+        // has exceeded some threshold value for some specified amount of time.
+
+        // if (dP_meas < dP_drop_max) {
+        if (dP_filt < dP_drop_max) {
+            collapse_timer += dt_s;
+            if (collapse_timer > collapse_hold_time) {
+                Debug.println("SHOT COLLAPSE");
+                return true;
+            }
+        }
+        collapse_timer = 0.0f;
+        return false;
+    }
+
+    float estimatePuckConductance(float P_meas, float u_out, float dP_filt) {
+
+        // Estimate puck conductance using flow proxy
+        // Flow can be estimated (though we cannot determine an absolute mL/s value),
+        // and from that we can derive the relative resistance of the puck,
+        // and use that to detect information about the puck itself.
+        // This is not part of the control loop.
+
+        const float k_est = 1.0f;
+        float Q_est = k_est * u_out - dP_filt;
+
+        float G = 0.0f;
+        if (P_meas > 0.5f) {
+            G = Q_est / P_meas;
+            // G = clamp(G, 0.0f, 2.0f); // TODO
+        }
+        float dG = (G - G_prev) * inv_dt;
+        G_prev = G;
+
+        return G; // TODO: return dG once filtered?
+    }
+};
+
+static ProController controller;
+
+MqttParam::Parameter<float> param_pro_dp("pid/pro/dp", controller.dP_max_slope, [] (float val) { controller.dP_max_slope = val; });
+MqttParam::Parameter<float> param_pro_kp("pid/pro/kp", controller.Kp,           [] (float val) { controller.Kp = val; });
+MqttParam::Parameter<float> param_pro_ki("pid/pro/ki", controller.Ki_trim,      [] (float val) { controller.Ki_trim = val; });
+MqttParam::Parameter<float> param_pro_kf("pid/pro/kf", controller.Kff,          [] (float val) { controller.Kff = val; });
+
+void notifyTick() {
+    xTaskNotifyGive(controlTaskHandle);
+}
+
+static void controlLoopTask(void* pv) {
+    while (true) {
+        // Wait for signal from the SensorSampler
+        // Task will be woken when a pressure sample is available (typically 100ms)
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        if (!s_run) {
+            continue;
+        }
+
+        unsigned long t_now = millis();
+        unsigned long t_shot = (t_now - s_startTime);
+
+        // Preinfusion
+        // Just apply 100% duty to give system some chance to stabilize...
+        if (t_shot <= t_shot_preinfuse_ms) {
+            IO::setPump(true);
+            continue;
+        }
+
+        float in_pressure = SensorSampler::getPressureUnfiltered();
+        // Debug.printf("TICK: %u : %.2f\n", t_shot, in_pressure);
 
         // Dynamic pressure profiling
         if (s_brewMode == BrewMode::DynamicProfile) {
             ProfileDefs::State state {
-                .timeElapsed = (uint32_t)((t_now - s_startTime) / 1000),
+                .timeElapsed = (uint32_t)(t_shot / 1000),
                 .currPressure = in_pressure,
-                .setPressure = s_pidSetpointPressure,
-                .currFlowRate = in_flowrate,
-                .setFlowRate = s_pidSetpointFlowRate,
+                .setPressure = s_setpointPressure,
+                .currFlowRate = 0,
+                .setFlowRate = 0,
             };
+
+            // May update s_setpointPressure via BrewControl::setPressure()
             processDynamicProfile(state);
         }
 
-        if (s_controlMode == ControlMode::Disabled) {
-            IO::setPump(false);
-            s_inrange = false;
-        }
-        else if (s_controlMode == ControlMode::Pressure) {
-            // It takes several seconds for the pre-infusion chamber to fill.
-            // Make sure we get past this point before we start regulating with PID,
-            // otherwise the integral term will windup and cause instability through the shot.
-            if (pid_input > Defaults::BeginRegulationPressure) {
-                s_inrange = true;
-            }
-            else if (pid_input < Defaults::EndRegulationPressure) {
-                // Fallen outside the range of PID regulation, set pump to 100% duty
-                IO::setPump(true);
-                s_inrange = false;
-            }
-        } else {
-            // Ignore for flowrate control
-            s_inrange = true;
-        }
+        float pid_output = controller.tick(s_setpointPressure, in_pressure);
+        IO::setPumpDuty(pid_output);
 
-        if (s_inrange) 
-        {
-            if ((t_now - t_last_pid) >= Defaults::UpdatePeriodMs) {
-                t_last_pid = t_now;
-
-                if (s_brewMode == BrewMode::TuningPressure) {
-                    // TODO: Implement
-                    //pid_output = calculateTuningTick(pid_input);
-                    //publishTuningData(pid_input, pid_output);
-                }
-                else {
-                    pid_output = pid.calculateTick(pid_input);
-
-                    // Calculate mean error
-                    float delta = abs(pid_input - pid_output);
-                    s_meanErrorPressure += delta;
-                    s_meanCount++;
-                }
-
-                //Debug.printf("PID: I=%.1f, S=%.1f, O=%.1f\n", pid_input, pid.getSetpoint(), pid_output);
-
-                IO::setPumpDuty(pid_output);
-            }
-        }
+        // Calculate mean error
+        float delta = abs(s_setpointPressure - pid_output);
+        s_meanErrorPressure += delta;
+        s_meanCount++;
     }
 }
 
@@ -390,10 +441,14 @@ void setMode(BrewMode profile) {
         case BrewMode::TuningPressure:
             Debug.println("Tuning Pressure PID");
             s_controlMode = ControlMode::Pressure;
+            HeatControl::setProfile(HeatControl::BoilerProfile::Off);
+            // startTuning();
             break;
         case BrewMode::TuningFlow:
             Debug.println("Tuning Flow Rate PID");
             s_controlMode = ControlMode::FlowRate;
+            HeatControl::setProfile(HeatControl::BoilerProfile::Off);
+            // startTuning();
             break;
         case BrewMode::ManualPressure:
             Debug.println("Constant Pressure");
@@ -410,17 +465,19 @@ void setMode(BrewMode profile) {
 }
 
 bool setProfile(std::string profileName) {
-    // TODO: Manual should really just be 100% pump power with mechanical pressure regulation
     if (profileName == "Manual") {
         setMode(BrewMode::ManualPressure);
         setPressure(CONFIG_TARGET_BREW_PRESSURE);
+        s_dynamicProfileName = profileName;
         return true;
     }
     else if (profileName == "Fixed Pressure") {
         setMode(BrewMode::ManualPressure);
+        s_dynamicProfileName = profileName;
         return true;
     }
     else if (profileName == "Fixed Flow Rate") {
+        s_dynamicProfileName = profileName;
         setMode(BrewMode::ManualFlow);
         return true;
     }
@@ -432,24 +489,40 @@ bool setProfile(std::string profileName) {
             setMode(BrewMode::DynamicProfile);
             Debug.printf("Brew Profile: %s\n", profileName.c_str());
             s_dynamicProfile = profile;
+            s_dynamicProfileName = profileName;
             return true;
         }
     }
 
+    if (profileName == "Tuning: Pressure") {
+        setMode(BrewMode::TuningPressure);
+        s_dynamicProfileName = profileName;
+        return true;
+    }
+    else if (profileName == "Tuning: Flow Rate") {
+        setMode(BrewMode::TuningFlow);
+        s_dynamicProfileName = profileName;
+        return true;
+    }
+
     Debug.printf("ERROR: Profile '%s' not known\n", profileName);
+    // Profile remains unchanged
     return false;
 }
 
 void start() {
+    Debug.println("Start brew profile");
+
     // Start PID control loop
     s_run = true;
-    s_inrange = false; // reset
     s_meanErrorPressure = 0.0f;
     s_meanCount = 0;
     s_profileStageIndex = 0;
     s_profileStageLastIndex = -1;
     s_startTime = millis();
     s_triggerBrewEnd = false;
+
+    controller.reset();
 
     // Immediately turn on pump for responsiveness
     // PID will take over when it gets to it
@@ -459,30 +532,26 @@ void start() {
         ProfileDefs::State state {
             .timeElapsed = 0,
             .currPressure = 0,
-            .setPressure = s_pidSetpointPressure,
+            .setPressure = s_setpointPressure,
             .currFlowRate = 0,
-            .setFlowRate = s_pidSetpointFlowRate,
+            .setFlowRate = s_setpointFlowRate,
         };
         processDynamicProfile(state);
     }
 
-    Debug.println("Start brew profile");
+    // if (s_brewMode == BrewMode::TuningPressure) {
+    //     startTuning();
+    // }
 }
 
 void stop() {
-    // Stop PID control loop
+    // Stop control loop
     s_run = false;
-    s_inrange = false;
 
     // Immediately turn off pump for responsiveness
     IO::setPump(false);
 
     Debug.println("Stop brew profile");
-
-    if (s_meanCount > 0) {
-        s_meanErrorPressure /= s_meanCount;
-        Debug.printf("Mean Error: %.1f\n", s_meanErrorPressure);
-    }
 }
 
 bool isProfileComplete() {
@@ -494,20 +563,19 @@ BrewMode getMode() {
 }
 
 std::string getProfileString() {
-    // switch (s_brewMode) {
-    //     case BrewMode::ManualPressure:
-    //         return "Pressure";
-    //     case BrewMode::ManualFlow:
-    //         return "Flow Rate";
-    //     case BrewMode::TuningPressure:
-    //         return "Tuning: Pressure";
-    //     case BrewMode::TuningFlow:
-    //         return "Tuning: Flow";
-    //     case BrewMode::DynamicProfile:
-    //         return "Dynamic"; // TODO: name of dynamic profile
-    // }
-    // return "";
-    return "";
+
+    switch (s_brewMode) {
+        case BrewMode::ManualPressure:
+            return "Manual: Pressure";
+        case BrewMode::ManualFlow:
+            return "Manual: Flow Rate";
+        case BrewMode::TuningPressure:
+            return "Tuning: Pressure";
+        case BrewMode::TuningFlow:
+            return "Tuning: Flow";
+        default:
+            return s_dynamicProfileName;
+    }
 }
 
 std::vector<std::string> getAvailableProfiles() {
@@ -523,7 +591,15 @@ float getTargetError() {
 }
 
 float getCurrentSetpoint() {
-    return pid.getSetpoint();
+    return s_setpointPressure;
+}
+
+
+void initControlLoop()
+{
+    // Note: Task must be high priority since we must make the sampling intervals
+    xTaskCreatePinnedToCore(controlLoopTask, "BrewControl", 3*1024, nullptr, TASK_PRIORITY_BREW_CONTROL, &controlTaskHandle, CORE1);
+
 }
 
 }
